@@ -1,0 +1,8 @@
+# Python 3.10-3.12. RapidOCR 1.4.4 bundles Chinese/English ONNX models.
+rapidocr-onnxruntime==1.4.4
+onnxruntime>=1.18,<2
+opencv-python>=4.8,<5
+numpy>=1.24,<3
+Pillow>=10.4,<13
+fastapi>=0.115,<1
+uvicorn>=0.30,<1

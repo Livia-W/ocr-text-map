@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#163c43">
+  <title>照片校准 · 中文文字地图</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+<main>
+  <header><div><p class="eyebrow">OCR · PHOTO CALIBRATION</p><h1>照片校准与文字地图</h1></div><span id="health" class="badge">正在连接服务</span></header>
+  <p class="intro">选择已有照片，调整方向与分割位置，再识别文字。点击文字行或定位框，检查校正结果与坐标。</p>
+  <section class="panel controls" aria-label="照片与校准设置">
+    <div class="control-row">
+      <label class="file-button">选择照片<input id="file" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"></label>
+      <p id="file-info" class="file-info">JPEG / PNG / WebP，最大 8 MiB、2000 万像素</p>
+      <button id="recognize" type="button" class="primary" disabled>识别文字</button>
+    </div>
+    <div class="settings">
+      <div class="rotation-controls" role="group" aria-label="照片旋转"><span>方向</span><button id="rotate-left" type="button" disabled>↶ 逆时针 90°</button><button id="rotate-right" type="button" disabled>↷ 顺时针 90°</button><output id="rotation-value">0°</output></div>
+      <label>分割方式<select id="split"><option value="none">不分割</option><option value="pages">左右书页</option><option value="columns">左右双栏</option></select></label>
+      <label>页面校正<select id="mode"><option value="auto">透视 + 曲面（自动）</option><option value="perspective">仅透视</option><option value="none">关闭校正</option></select></label>
+      <label>每区处理最大边<select id="max-side"><option value="1280">1280 像素</option><option value="1920" selected>1920 像素</option><option value="2560">2560 像素</option></select></label>
+      <label>最低置信度<select id="confidence"><option value="0.3">30%</option><option value="0.45" selected>45%</option><option value="0.6">60%</option><option value="0.8">80%</option></select></label>
+    </div>
+    <label id="split-control" class="split-control" hidden>分割位置<input id="split-position" type="range" min="10" max="90" step="1" value="50"><output id="split-value">50%</output></label>
+    <p id="status" role="status" aria-live="polite">请选择一张照片。</p>
+  </section>
+  <section class="panel preview-panel" aria-label="照片校准预览">
+    <div class="panel-heading"><h2>校准预览</h2><span class="hint">分割线以旋转后的照片为准</span></div>
+    <div class="canvas-holder"><p id="preview-empty" class="empty">所选照片将在这里预览</p><canvas id="preview" hidden aria-label="旋转和分割位置预览"></canvas></div>
+  </section>
+  <div class="workspace">
+    <section class="panel" aria-label="识别图像和文字定位">
+      <div class="panel-heading"><h2>文字地图</h2><label class="view-label">查看<select id="result-view" disabled><option value="source">原始照片</option></select></label></div>
+      <div class="canvas-holder"><p id="map-empty" class="empty">点击「识别文字」生成地图</p><canvas id="map" hidden aria-label="可点击文字定位框，也可从文字行列表选择"></canvas></div>
+      <p class="caption">原始照片按 EXIF 方向显示，不叠加上方的手动旋转；校正分区显示该区域的定位框。坐标单位为像素。</p>
+      <ul id="warnings" class="warnings" aria-label="校正提示"></ul>
+    </section>
+    <section class="panel" aria-label="识别文字和坐标详情">
+      <div class="panel-heading"><h2>文字行 <span id="line-count" class="count">0</span></h2><div class="exports"><button id="export-txt" type="button" disabled>导出 TXT</button><button id="export-json" type="button" disabled>导出坐标 JSON</button></div></div>
+      <p id="metrics" class="metrics">结果按阅读顺序排列</p>
+      <div id="line-list" class="line-list"><p class="empty">尚无识别结果</p></div>
+      <section id="selection" class="selection" hidden aria-label="所选文字行详情"><h3>文字与坐标</h3><p id="selected-text"></p><dl id="selected-info"></dl><p class="caption">矩形格式为 [x, y, 宽, 高]；校正坐标属于该行所在的分区。</p></section>
+    </section>
+  </div>
+  <footer>适用于横排印刷文字。调整照片、方向或识别参数后，需要重新点击识别。复杂版式和严重卷曲的页面仍需检查结果。</footer>
+</main>
+</body>
+</html>

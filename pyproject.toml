@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocr-text-map"
+description = "Module B: Chinese photo OCR, page calibration and coordinate text maps"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dynamic = ["version", "dependencies"]
+
+[project.scripts]
+ocr-text-map = "mobile_ocr.__main__:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "mobile_ocr.__version__"}
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+include = ["mobile_ocr*"]
+
+[tool.setuptools.package-data]
+mobile_ocr = ["static/*.html", "static/*.js", "static/*.css"]
