@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f3ed">
+  <title>BookReader · 书页拍摄</title>
+  <link rel="stylesheet" href="styles.css?v=20261105.4">
+  <script src="camera.js" defer></script>
+  <script src="opencv-loader.js?v=20261105.4" defer></script>
+  <script src="page-detector.js?v=20261105.4" defer></script>
+  <script src="page-output.js?v=20261105.4" defer></script>
+  <script src="page-content.js?v=20261105.4" defer></script>
+  <script src="stability.js?v=20261105.4" defer></script>
+  <script src="live-bridge.js?v=20261105.4" defer></script>
+  <script src="app.js?v=20261105.4" defer></script>
+</head>
+<body>
+  <main>
+    <header><span class="brand">BOOKREADER <span> / 01</span></span><span class="tag">书页采集</span></header>
+    <h1>把这一页，留下来。</h1>
+    <p class="intro">将书页完整放入画面，保持光线均匀，轻点拍摄。</p>
+    <p class="build">构建版本：A-FIX-20261105-4</p>
+    <section class="workspace" aria-label="书页拍摄工作区">
+      <div class="viewer">
+        <video id="video" autoplay muted playsinline aria-label="实时摄像头画面" hidden></video>
+        <div id="placeholder"><span class="book-icon" aria-hidden="true">▤</span><h2>准备好你的书页</h2><p>开启相机后，这里将显示实时画面</p></div>
+        <canvas id="overlay" aria-label="检测到的页面边界"></canvas>
+      </div>
+      <div class="details"><span id="phase">相机未开启</span><output id="resolution">实际分辨率：—</output></div>
+      <p id="message" role="status" aria-live="polite">照片仅保留在当前页面，不会自动上传。</p>
+      <label class="auto-control"><input id="auto" type="checkbox"> 自动拍摄</label>
+      <p id="stability-status" role="status">自动拍摄已关闭</p>
+      <p id="page-identity" role="status">页面编号：— · 采集次数：0 · 等待书页</p>
+      <p id="hand-status" class="hint">手部遮挡输入尚未接入；当前不能可靠排除所有手部误触发。</p>
+      <p id="cv-status" role="status">OpenCV 尚未加载</p>
+      <button id="retry-cv" class="secondary" hidden>重试加载</button>
+      <details id="detection-debug"><summary>展开 / 收起检测调试与处理图</summary>
+        <p id="debug-summary">尚未分析视频帧</p>
+        <p class="hint">当前视频帧的闭运算边缘图；橙色为候选，绿色为通过页面。帧号应持续递增。</p>
+        <canvas id="debug-frame" width="1" height="1" aria-label="当前检测帧的处理结果"></canvas>
+        <pre id="page-debug">尚未检测到页面候选</pre>
+      </details>
+      <p class="hint">确认页面边界与纹理并稳定约 1.5 秒后自动拍摄。传统视觉可能误判印刷物，不识别手部或翻页；透视校正不解决弯曲书页。</p>
+      <div class="actions">
+        <button id="start" class="primary">开启相机</button>
+        <button id="capture" class="primary" hidden disabled>拍摄书页</button>
+        <button id="stop" class="secondary" hidden>停止相机</button>
+        <button id="retake" class="secondary" hidden>重新拍摄</button>
+        <a id="download" class="button primary" hidden download>下载图片</a>
+      </div>
+      <img id="result" alt="最近拍摄的完整画面" hidden>
+      <div id="page-results"></div>
+    </section>
+    <footer><span>完整画面 · 原始视频分辨率</span><span>支持竖屏 / 横屏</span></footer>
+    <p class="hint">iPhone 请使用 Safari 打开 HTTPS 页面。下载后可在 Safari 下载列表或“文件”App 中查看；也可长按照片保存。</p>
+  </main>
+</body>
+</html>
