@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>纸伴 PaperPal · D 模块（朗读与阅读管理）自测台</title>
+  <style>
+    :root {
+      --bg: #0f1714;
+      --card: #16221d;
+      --border: rgba(255, 255, 255, 0.12);
+      --mint: #88f0bd;
+      --amber: #ffc65c;
+      --text: #f3f7f4;
+      --muted: #9aa8a0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
+    }
+    .wrap { max-width: 900px; margin: 0 auto; display: grid; gap: 16px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    h1 { margin: 0 0 6px; font-size: 20px; color: var(--mint); }
+    h2 { margin: 0 0 12px; font-size: 15px; color: #dce6e0; }
+    .sub { color: var(--muted); font-size: 13px; margin: 0; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    button {
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    button.primary {
+      background: var(--mint);
+      color: #091d14;
+      font-weight: 700;
+      border-color: var(--mint);
+    }
+    button.active {
+      border-color: var(--amber);
+      color: var(--amber);
+    }
+    .status-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .status-bar strong { color: var(--amber); }
+    .lines { display: grid; gap: 6px; }
+    .line-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: rgba(255, 255, 255, 0.03);
+      cursor: pointer;
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+    }
+    .line-item:hover { background: rgba(255, 255, 255, 0.07); }
+    .line-item.active {
+      background: rgba(255, 198, 92, 0.16);
+      border-color: var(--amber);
+      color: #fff5dc;
+    }
+    .line-no { font-size: 12px; color: var(--muted); min-width: 48px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+    ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13px; color: #cfd9d3; }
+    .empty { color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>纸伴 · D 模块（朗读与阅读管理）自测台</h1>
+      <p class="sub">已内置 B 队友 OCR 文字地图《“心”鲜的世界》，点击任意按钮或文字行即可测试真实语音朗读。</p>
+      <div class="controls">
+        <button class="primary" id="btnPlay">开始 / 继续朗读</button>
+        <button id="btnPause">暂停</button>
+        <button id="btnPrev">上一行</button>
+        <button id="btnNext">下一行</button>
+        <button id="btnSave">保存当前选区 (Highlight)</button>
+        <button id="btnMockSelect">模拟 C 框选保存两行</button>
+        <button id="btnLoadJson">导入 B 的文字地图 JSON</button>
+        <input type="file" id="fileInput" accept=".json" hidden />
+      </div>
+      <div class="controls">
+        <span style="font-size:13px;color:var(--muted);align-self:center;">语速：</span>
+        <button class="speed-btn" data-speed="0.75">0.75x</button>
+        <button class="speed-btn active" data-speed="1">1.0x</button>
+        <button class="speed-btn" data-speed="1.25">1.25x</button>
+        <button class="speed-btn" data-speed="1.5">1.5x</button>
+        <button class="speed-btn" data-speed="2">2.0x</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="status-bar">
+        <span>状态：<strong id="stStatus">idle</strong></span>
+        <span>页面：<strong id="stPage">—</strong></span>
+        <span>进度：<strong id="stProgress">0 / 0</strong></span>
+        <span>语速：<strong id="stSpeed">1.0x</strong></span>
+      </div>
+      <div id="lineList" class="lines"></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h2>我的标记（Highlight 笔记）</h2>
+        <ul id="hlList"><li class="empty">暂无保存的选区</li></ul>
+      </div>
+      <div class="card">
+        <h2>阅读历史记录</h2>
+        <ul id="hisList"><li class="empty">暂无历史记录</li></ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 内联完整 ReadingManager，确保双击 HTML 即可离线直接运行
+    const STORAGE_KEYS = {
+      HIGHLIGHTS: "paperpal_d_highlights_v1",
+      HISTORY: "paperpal_d_history_v1",
+      PROGRESS: "paperpal_d_progress_v1",
+      SETTINGS: "paperpal_d_settings_v1"
+    };
+
+    const B_SAMPLE_JSON = {
+      pageId: "969945613a8548bebb57847ad3e8ac98",
+      label: "推荐序 · “心”鲜的世界",
+      lines: [
+        { id: "line-1", reading_order: 1, block_id: "block-1", text: "推荐序" },
+        { id: "line-2", reading_order: 2, block_id: "block-2", text: "“心”鲜的世界" },
+        { id: "line-3", reading_order: 3, block_id: "block-3", text: "陶勇" },
+        { id: "line-4", reading_order: 4, block_id: "block-4", text: "如果做一道填空题，花是的。你会如何回答？" },
+        { id: "line-5", reading_order: 5, block_id: "block-4", text: "睁开眼睛，仿佛置身公园，眼前浮现出姹紫嫣红的" },
+        { id: "line-6", reading_order: 6, block_id: "block-4", text: "鲜花，我们会说，花是美的。" },
+        { id: "line-7", reading_order: 7, block_id: "block-4", text: "闭上眼睛，深吸一口，浓郁的芬芳沁人心脾，我们" },
+        { id: "line-8", reading_order: 8, block_id: "block-4", text: "会说，花是香的。" },
+        { id: "line-9", reading_order: 9, block_id: "block-4", text: "轻轻地抚上花瓣，顺滑而又层层叠叠，感觉仿佛细" },
+        { id: "line-10", reading_order: 10, block_id: "block-4", text: "沙，又好似泉水，我们会说，花是柔的。" },
+        { id: "line-11", reading_order: 11, block_id: "block-4", text: "长期处于黑暗中的视障人士，会如何回答？我们想" },
+        { id: "line-12", reading_order: 12, block_id: "block-4", text: "当然地以为，他们的答案会和我们相近。" },
+        { id: "line-13", reading_order: 13, block_id: "block-4", text: "其实不然。" }
+      ]
+    };
+
+    class ReadingManager {
+      constructor() {
+        this.synth = window.speechSynthesis;
+        this.speed = 1.0;
+        this.voiceEnabled = true;
+        this.lines = [];
+        this.currentIndex = 0;
+        this.status = "idle";
+        this._autoAdvance = false;
+        this._utteranceId = 0;
+        this._listeners = new Set();
+        this.highlights = this._load(STORAGE_KEYS.HIGHLIGHTS, []);
+        this.history = this._load(STORAGE_KEYS.HISTORY, []);
+        this.progressMap = this._load(STORAGE_KEYS.PROGRESS, {});
+        this.loadOcrMap(B_SAMPLE_JSON, true);
+      }
+      loadOcrMap(ocrJson, silent = false) {
+        const sorted = [...(ocrJson.lines || [])].sort((a, b) => (a.reading_order || 0) - (b.reading_order || 0));
+        this.currentPageId = ocrJson.pageId || ocrJson.frame_id || "page-1";
+        this.currentPageLabel = ocrJson.label || "当前书页";
+        this.lines = sorted.map((l, idx) => ({ index: idx, id: l.id || `line-${idx + 1}`, text: l.text.trim() }));
+        const saved = this.progressMap[this.currentPageId];
+        this.currentIndex = saved && saved.index < this.lines.length ? saved.index : 0;
+        this.status = "idle";
+        this._emit();
+        if (!silent) this.speakFeedback(`已载入${this.currentPageLabel}，共${this.lines.length}行`);
+      }
+      play(index = this.currentIndex) {
+        if (!this.lines.length) return;
+        this.currentIndex = Math.max(0, Math.min(index, this.lines.length - 1));
+        this._autoAdvance = true;
+        this.status = "playing";
+        const line = this.lines[this.currentIndex];
+        this.progressMap[this.currentPageId] = { index: this.currentIndex, lineId: line.id };
+        this._save(STORAGE_KEYS.PROGRESS, this.progressMap);
+        this._addHistory("朗读", line.text);
+        this._emit();
+        this._speak(line.text, this.speed, () => {
+          if (this._autoAdvance && this.status === "playing") {
+            if (this.currentIndex + 1 < this.lines.length) this.play(this.currentIndex + 1);
+            else { this.status = "idle"; this._autoAdvance = false; this._emit(); this.speakFeedback("本页已读完"); }
+          }
+        });
+      }
+      pause() { this._autoAdvance = false; this.stopSpeech(); this.status = "paused"; this._emit(); this.speakFeedback("已暂停"); }
+      prevLine() { if (this.currentIndex > 0) this.play(this.currentIndex - 1); else this.speakFeedback("已经是第一行"); }
+      nextLine() { if (this.currentIndex + 1 < this.lines.length) this.play(this.currentIndex + 1); else this.speakFeedback("已经是最后一行"); }
+      setSpeed(rate) { this.speed = rate; this._emit(); this.speakFeedback(`语速${rate}倍`); }
+      saveHighlight(text, lineIds = []) {
+        const line = this.lines[this.currentIndex];
+        const content = (text || (line ? line.text : "")).trim();
+        if (!content) return;
+        this.highlights.unshift({ id: Date.now(), pageLabel: this.currentPageLabel, text: content, lineIds });
+        this._save(STORAGE_KEYS.HIGHLIGHTS, this.highlights);
+        this._addHistory("保存选区", content);
+        this._emit();
+        this.speakFeedback("已保存选区");
+      }
+      speakFeedback(text) { if (this.voiceEnabled) { this._autoAdvance = false; this._speak(text, Math.max(1.0, this.speed)); } }
+      stopSpeech() { this._utteranceId++; this.synth?.cancel(); }
+      _speak(text, rate, onEnd) {
+        if (!this.synth) return;
+        const id = ++this._utteranceId;
+        this.synth.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = "zh-CN";
+        u.rate = rate;
+        u.onend = () => { if (id === this._utteranceId && onEnd) onEnd(); };
+        this.synth.speak(u);
+      }
+      _addHistory(action, detail) {
+        this.history.unshift({ action, detail, time: new Date().toLocaleTimeString("zh-CN", { hour12: false }) });
+        if (this.history.length > 30) this.history.length = 30;
+        this._save(STORAGE_KEYS.HISTORY, this.history);
+      }
+      onStateChange(fn) { this._listeners.add(fn); fn(this); return () => this._listeners.delete(fn); }
+      _emit() { this._listeners.forEach((fn) => fn(this)); }
+      _load(k, fb) { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : fb; } catch { return fb; } }
+      _save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+    }
+
+    const manager = new ReadingManager();
+    const lineList = document.getElementById("lineList");
+    const hlList = document.getElementById("hlList");
+    const hisList = document.getElementById("hisList");
+
+    manager.onStateChange((m) => {
+      document.getElementById("stStatus").textContent = m.status;
+      document.getElementById("stPage").textContent = m.currentPageLabel;
+      document.getElementById("stProgress").textContent = `${m.currentIndex + 1} / ${m.totalLines || m.lines.length}`;
+      document.getElementById("stSpeed").textContent = `${m.speed}x`;
+
+      lineList.innerHTML = m.lines.map((l, idx) => `
+        <div class="line-item ${idx === m.currentIndex ? "active" : ""}" data-idx="${idx}">
+          <span class="line-no">第 ${idx + 1} 行</span>
+          <span>${l.text}</span>
+        </div>
+      `).join("");
+
+      hlList.innerHTML = m.highlights.length
+        ? m.highlights.map((h) => `<li><strong>[${h.pageLabel}]</strong> ${h.text}</li>`).join("")
+        : `<li class="empty">暂无保存的选区</li>`;
+
+      hisList.innerHTML = m.history.length
+        ? m.history.slice(0, 10).map((it) => `<li>[${it.time}] ${it.action}：${it.detail}</li>`).join("")
+        : `<li class="empty">暂无历史记录</li>`;
+    });
+
+    lineList.addEventListener("click", (e) => {
+      const item = e.target.closest(".line-item");
+      if (item) manager.play(Number(item.dataset.idx));
+    });
+
+    document.getElementById("btnPlay").onclick = () => manager.play(manager.currentIndex);
+    document.getElementById("btnPause").onclick = () => manager.pause();
+    document.getElementById("btnPrev").onclick = () => manager.prevLine();
+    document.getElementById("btnNext").onclick = () => manager.nextLine();
+    document.getElementById("btnSave").onclick = () => manager.saveHighlight();
+    document.getElementById("btnMockSelect").onclick = () => {
+      const slice = manager.lines.slice(manager.currentIndex, manager.currentIndex + 2);
+      manager.saveHighlight(slice.map((s) => s.text).join(" "), slice.map((s) => s.id));
+    };
+
+    document.querySelectorAll(".speed-btn").forEach((btn) => {
+      btn.onclick = () => {
+        document.querySelectorAll(".speed-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        manager.setSpeed(Number(btn.dataset.speed));
+      };
+    });
+
+    const fileInput = document.getElementById("fileInput");
+    document.getElementById("btnLoadJson").onclick = () => fileInput.click();
+    fileInput.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const json = JSON.parse(await file.text());
+      manager.loadOcrMap(json);
+    };
+  </script>
+</body>
+</html>
