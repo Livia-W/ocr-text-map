@@ -132,13 +132,49 @@
   }
 
   function normalizeSelectionRect(a, b) {
-    if (!a || !b) return null;
+    if (!finitePoint(a) || !finitePoint(b)) return null;
     return {
       x: Math.min(a.x, b.x),
       y: Math.min(a.y, b.y),
       width: Math.abs(a.x - b.x),
       height: Math.abs(a.y - b.y)
     };
+  }
+
+  function finitePoint(point) {
+    return Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
+  }
+
+  function validateCoordinateMapper(mapper) {
+    if (mapper != null && (!["screenToMap", "mapToScreen", "isValid"]
+        .every(name => typeof mapper[name] === "function"))) {
+      throw new TypeError("coordinateMapper 必须提供 screenToMap、mapToScreen 和 isValid 方法");
+    }
+    return mapper || null;
+  }
+
+  function polygonIntersectsRect(polygon, rect) {
+    if (!polygon?.every(finitePoint) || !rect || !(rect.width > 0) || !(rect.height > 0)) return false;
+    const box = [
+      { x: rect.x, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y + rect.height },
+      { x: rect.x, y: rect.y + rect.height }
+    ];
+    // Both shapes are convex. Test the true projected quadrilateral rather
+    // than its larger axis-aligned envelope after a perspective/rotation.
+    for (const shape of [polygon, box]) {
+      for (let i = 0; i < shape.length; i += 1) {
+        const a = shape[i], b = shape[(i + 1) % shape.length];
+        const axis = { x: a.y - b.y, y: b.x - a.x };
+        const projected = polygon.map(point => point.x * axis.x + point.y * axis.y);
+        const selected = box.map(point => point.x * axis.x + point.y * axis.y);
+        if (Math.max(...projected) < Math.min(...selected) || Math.max(...selected) < Math.min(...projected)) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   class GestureEngine {
@@ -160,6 +196,9 @@
 
       this.ctx = this.canvas?.getContext?.("2d") || null;
       this.mapViewport = options.mapViewport || null;
+      this.coordinateMapper = validateCoordinateMapper(options.coordinateMapper);
+      this.mappingInvalid = false;
+      this.objectFit = options.objectFit === "contain" ? "contain" : "cover";
       this.requestCamera = options.requestCamera !== false;
       this.ownsCameraStream = false;
       this.stream = null;
@@ -430,6 +469,41 @@
       return this;
     }
 
+    setCoordinateMapper(mapper) {
+      this.coordinateMapper = validateCoordinateMapper(mapper);
+      this.mappingInvalid = false;
+      this.resetTrackingState();
+      if (this.state !== "paused") this.setState("idle", "坐标映射已更新。");
+      return this;
+    }
+
+    isCoordinateMappingValid() {
+      let valid = true;
+      if (this.coordinateMapper) {
+        try { valid = this.coordinateMapper.isValid() === true; }
+        catch (error) { valid = false; }
+      }
+      if (!valid && !this.mappingInvalid) {
+        this.mappingInvalid = true;
+        this.resetTrackingState();
+        if (this.state !== "paused") this.setState("idle", "页面跟踪无效，等待有效参考页。");
+      } else if (valid) {
+        this.mappingInvalid = false;
+      }
+      return valid;
+    }
+
+    clearTextMap() {
+      this.textMap = null;
+      this.lineMap = [];
+      this.lineById = new Map();
+      this.wordMap = [];
+      this.resetTrackingState();
+      this.setState("idle", "文字地图已清除。");
+      this.onMapLoaded(null);
+      return this;
+    }
+
     setViewportRect(rect) {
       this.viewportRect = rect
         ? {
@@ -659,6 +733,11 @@
         lineId: null,
         wordIndex: null
       };
+      this.selection = { active: false, tipA: null, tipB: null,
+        startedAt: 0, lastSeenAt: 0, cooldownUntil: 0 };
+      this.twoHandCandidate = { since: 0, lastSeenAt: 0, tips: null };
+      this.lastSelection = null;
+      this.resetPauseRecovery();
       this.onActiveWord(null);
       this.onHoverWord(null);
     }
@@ -675,8 +754,15 @@
     }
 
     screenToMap(x, y) {
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !this.isCoordinateMappingValid()) return null;
+      if (this.coordinateMapper) {
+        let point;
+        try { point = this.coordinateMapper.screenToMap(x, y); }
+        catch (error) { return null; }
+        return finitePoint(point) ? point : null;
+      }
       const rect = this.viewportRect || this.mapViewport?.getBoundingClientRect?.();
-      if (!rect || !this.displayScale) return { x: NaN, y: NaN };
+      if (!rect || !(this.displayScale > 0)) return null;
       return {
         x: (x - rect.left - this.displayOffsetX) / this.displayScale,
         y: (y - rect.top - this.displayOffsetY) / this.displayScale
@@ -684,8 +770,15 @@
     }
 
     mapToScreen(x, y) {
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !this.isCoordinateMappingValid()) return null;
+      if (this.coordinateMapper) {
+        let point;
+        try { point = this.coordinateMapper.mapToScreen(x, y); }
+        catch (error) { return null; }
+        return finitePoint(point) ? point : null;
+      }
       const rect = this.viewportRect || this.mapViewport?.getBoundingClientRect?.();
-      if (!rect) return { x: NaN, y: NaN };
+      if (!rect || !(this.displayScale > 0)) return null;
       return {
         x: rect.left + this.displayOffsetX + x * this.displayScale,
         y: rect.top + this.displayOffsetY + y * this.displayScale
@@ -693,6 +786,7 @@
     }
 
     findLineAtY(y) {
+      if (!this.textMap || !Number.isFinite(y) || !this.isCoordinateMappingValid()) return null;
       let bestLine = null;
       let bestDistance = Infinity;
       for (const line of this.lineMap) {
@@ -707,7 +801,7 @@
     }
 
     findWordByX(line, x) {
-      if (!line?.words.length) return null;
+      if (!line?.words.length || !Number.isFinite(x) || !this.textMap || !this.isCoordinateMappingValid()) return null;
       if (x <= line.x) return line.words[0];
       if (x >= line.x + line.width) return line.words[line.words.length - 1];
       return line.words.reduce((best, word) => {
@@ -724,7 +818,7 @@
     }
 
     emitWordFocus(event, word) {
-      if (!word?.line) return;
+      if (!word?.line || !this.textMap || !this.isCoordinateMappingValid()) return;
       const data = {
         event,
         lineId: String(word.lineId),
@@ -783,7 +877,7 @@
     }
 
     publishTrajectory(words, event = "focus") {
-      if (!words.length) return false;
+      if (!words.length || !this.textMap || !this.isCoordinateMappingValid()) return false;
       const finalWord = words[words.length - 1];
       words.forEach((word) => this.emitWordFocus(event, word));
       this.hoverWord = finalWord;
@@ -794,6 +888,7 @@
     }
 
     updateLineEnd(trace, lineId, unlockTakeover = false) {
+      if (!this.textMap || !this.isCoordinateMappingValid()) return false;
       const line = this.lineById.get(lineId);
       if (!line || !trace) return false;
       const beyondRight = trace.x > line.x + line.width;
@@ -817,7 +912,13 @@
     }
 
     updatePointerTrace(screenX, screenY, now) {
+      if (!this.textMap || !this.isCoordinateMappingValid()) return null;
       const point = this.screenToMap(screenX, screenY);
+      if (!point) {
+        this.resetTrackingState();
+        if (this.state !== "paused") this.setState("idle", "手指不在有效页面坐标内。");
+        return null;
+      }
       const previous = { ...this.pointerTrace };
       const dt = previous.at && now > previous.at ? now - previous.at : 0;
       const dx = previous.at ? point.x - previous.x : 0;
@@ -882,6 +983,7 @@
     }
 
     handlePointerWord(trace, now) {
+      if (!this.isCoordinateMappingValid()) return;
       if (!this.initialized || !this.textMap || this.state === "paused" || this.state === "selecting") {
         return;
       }
@@ -972,15 +1074,15 @@
             since: now,
             lastSeenAt: now,
             word: trace.word,
-            xMin: trace.screenX,
-            xMax: trace.screenX,
+            xMin: trace.x,
+            xMax: trace.x,
             words: []
           };
         } else {
           this.lineCandidate.lastSeenAt = now;
           this.lineCandidate.word = trace.word;
-          this.lineCandidate.xMin = Math.min(this.lineCandidate.xMin, trace.screenX);
-          this.lineCandidate.xMax = Math.max(this.lineCandidate.xMax, trace.screenX);
+          this.lineCandidate.xMin = Math.min(this.lineCandidate.xMin, trace.x);
+          this.lineCandidate.xMax = Math.max(this.lineCandidate.xMax, trace.x);
         }
         this.setState("switching_line", "正在建立初始行锁定。");
         if (now - this.lineCandidate.since >= LINE_SWITCH_DEBOUNCE_MS) {
@@ -1009,15 +1111,15 @@
           since: now,
           lastSeenAt: now,
           word: trace.word,
-          xMin: trace.screenX,
-          xMax: trace.screenX,
+          xMin: trace.x,
+          xMax: trace.x,
           words: []
         };
       } else {
         this.lineCandidate.lastSeenAt = now;
         this.lineCandidate.word = trace.word;
-        this.lineCandidate.xMin = Math.min(this.lineCandidate.xMin, trace.screenX);
-        this.lineCandidate.xMax = Math.max(this.lineCandidate.xMax, trace.screenX);
+        this.lineCandidate.xMin = Math.min(this.lineCandidate.xMin, trace.x);
+        this.lineCandidate.xMax = Math.max(this.lineCandidate.xMax, trace.x);
       }
       this.lineCandidate.words = this.lineCandidate.words.concat(trace.pathWords);
       this.hoverWord = trace.word;
@@ -1043,6 +1145,7 @@
     }
 
     commitLineTransition(targetWord, trajectoryWords, trace) {
+      if (!this.textMap || !this.isCoordinateMappingValid() || !targetWord || !trace) return;
       const previousLine = this.lineById.get(this.activeLineId);
       const targetLine = this.lineById.get(targetWord.lineId);
       if (!previousLine || !targetLine) return;
@@ -1124,11 +1227,13 @@
     }
 
     getCameraRenderRect() {
-      const host = this.canvas || this.video;
+      const host = typeof this.video.getBoundingClientRect === "function" ? this.video : this.canvas;
       const rect = host.getBoundingClientRect();
       const vw = this.video.videoWidth || 1280;
       const vh = this.video.videoHeight || 720;
-      const scale = Math.max(rect.width / vw, rect.height / vh);
+      const scale = this.objectFit === "contain"
+        ? Math.min(rect.width / vw, rect.height / vh)
+        : Math.max(rect.width / vw, rect.height / vh);
       return {
         left: rect.left + (rect.width - vw * scale) / 2,
         top: rect.top + (rect.height - vh * scale) / 2,
@@ -1255,6 +1360,7 @@
     }
 
     getSelectionTips(hands, now) {
+      if (!this.textMap || !this.isCoordinateMappingValid()) return null;
       const pointing = hands.filter(isPointingIndex);
       let pair = null;
       for (let i = 0; i < pointing.length; i += 1) {
@@ -1293,9 +1399,16 @@
     }
 
     updateSelection(tips, now) {
+      if (!this.textMap || !this.isCoordinateMappingValid()) return false;
       if (this.state === "paused") return true;
       if (now < this.selection.cooldownUntil) return false;
       if (tips) {
+        if (!finitePoint(tips[0]) || !finitePoint(tips[1]) ||
+            !this.screenToMap(tips[0].x, tips[0].y) || !this.screenToMap(tips[1].x, tips[1].y)) {
+          this.resetTrackingState();
+          this.setState("idle", "选区不在有效页面坐标内。");
+          return false;
+        }
         if (!this.selection.active) {
           this.selection.active = true;
           this.selection.startedAt = now;
@@ -1326,29 +1439,25 @@
     }
 
     finishSelection() {
-      const rect = normalizeSelectionRect(
-        this.selection.tipA,
-        this.selection.tipB
-      );
+      if (!this.textMap || !this.isCoordinateMappingValid()) {
+        this.resetTrackingState();
+        return null;
+      }
+      const tipA = this.selection.tipA, tipB = this.selection.tipB;
+      const rect = normalizeSelectionRect(tipA, tipB);
+      const tipsValid = rect && this.screenToMap(tipA.x, tipA.y) && this.screenToMap(tipB.x, tipB.y);
       this.selection.active = false;
       this.selection.tipA = null;
       this.selection.tipB = null;
       this.selection.cooldownUntil = performance.now() + LINE_SWITCH_DEBOUNCE_MS * 2;
-      this.lastSelection = rect
+      this.lastSelection = tipsValid
         ? { rect, expiresAt: performance.now() + 1500 }
         : null;
-      if (!rect) return;
-      const layout = this.getLayout();
-      const hits = this.wordMap.filter((word) => {
-        const left = layout.left + layout.offsetX + word.x * layout.scale;
-        const top = layout.top + layout.offsetY + word.y * layout.scale;
-        const right = left + word.width * layout.scale;
-        const bottom = top + word.height * layout.scale;
-        return right >= rect.x &&
-          left <= rect.x + rect.width &&
-          bottom >= rect.y &&
-          top <= rect.y + rect.height;
-      });
+      if (!tipsValid) {
+        if (this.state !== "paused") this.setState("idle", "选区不在有效页面坐标内。");
+        return null;
+      }
+      const hits = this.wordMap.filter(word => polygonIntersectsRect(this.projectWordPolygon(word), rect));
       const grouped = new Map();
       hits.forEach((word) => {
         if (!grouped.has(word.lineId)) grouped.set(word.lineId, []);
@@ -1357,14 +1466,16 @@
       const text = Array.from(grouped.entries()).map(([lineId, words]) =>
         `${lineId}: ${words.map((word) => word.text).join("")}`
       ).join("；");
-      this.onSelection({
+      const result = {
         hits,
         text,
         rect,
         lines: Array.from(grouped.keys())
-      });
+      };
+      this.onSelection(result);
       this.playSoundSelect();
-      this.setState("selecting", hits.length ? "框选完成。" : "框选未命中文字。");
+      this.setState("idle", hits.length ? "框选完成。" : "框选未命中文字。");
+      return result;
     }
 
     triggerPause(reason) {
@@ -1557,6 +1668,8 @@
         hands: this.hands
       });
 
+      if (!this.isCoordinateMappingValid() || !this.textMap) return;
+
       const pointer = this.choosePointerHand(this.hands);
       this.monitorPauseTriggers(this.hands, pointer, now);
       if (this.state === "paused") return;
@@ -1602,7 +1715,10 @@
     }
 
     drawHand(hand) {
-      if (!this.ctx) return;
+      if (!this.ctx || !this.isCoordinateMappingValid()) return;
+      const bounds = this.canvas.getBoundingClientRect();
+      const points = hand.points.map(point => finitePoint(point)
+        ? { x: point.x - bounds.left, y: point.y - bounds.top } : null);
       const color = this.state === "paused"
         ? "rgba(255, 141, 123, 0.54)"
         : this.state === "selecting" || this.state === "takeover"
@@ -1616,12 +1732,14 @@
       this.ctx.lineJoin = "round";
       this.ctx.lineWidth = hand.role === "pointer" ? 2 : 1.1;
       HAND_CONNECTIONS.forEach(([start, end]) => {
+        if (!points[start] || !points[end]) return;
         this.ctx.beginPath();
-        this.ctx.moveTo(hand.points[start].x, hand.points[start].y);
-        this.ctx.lineTo(hand.points[end].x, hand.points[end].y);
+        this.ctx.moveTo(points[start].x, points[start].y);
+        this.ctx.lineTo(points[end].x, points[end].y);
         this.ctx.stroke();
       });
-      hand.points.forEach((point, index) => {
+      points.forEach((point, index) => {
+        if (!point) return;
         this.ctx.beginPath();
         this.ctx.arc(point.x, point.y, index === 8 ? 4 : 2, 0, Math.PI * 2);
         this.ctx.fillStyle = color;
@@ -1631,32 +1749,48 @@
     }
 
     drawWordBox(word, color, dashed = false) {
-      if (!this.ctx || !word) return;
-      const origin = this.mapToScreen(word.x, word.y);
-      const width = word.width * this.displayScale;
-      const height = word.height * this.displayScale;
+      if (!this.ctx || !word || !this.textMap || !this.isCoordinateMappingValid()) return;
+      const polygon = this.projectWordPolygon(word);
+      if (!polygon) return;
+      const bounds = this.canvas.getBoundingClientRect();
       this.ctx.save();
       this.ctx.strokeStyle = color;
       this.ctx.lineWidth = dashed ? 1.3 : 1.8;
       this.ctx.setLineDash(dashed ? [5, 4] : []);
-      this.ctx.strokeRect(origin.x, origin.y, width, height);
+      this.ctx.beginPath();
+      polygon.forEach((point, index) => {
+        this.ctx[index ? "lineTo" : "moveTo"](point.x - bounds.left, point.y - bounds.top);
+      });
+      this.ctx.closePath();
+      this.ctx.stroke();
       this.ctx.restore();
     }
 
+    projectWordPolygon(word) {
+      if (!word || !this.textMap || !this.isCoordinateMappingValid()) return null;
+      const polygon = [
+        [word.x, word.y], [word.x + word.width, word.y],
+        [word.x + word.width, word.y + word.height], [word.x, word.y + word.height]
+      ].map(([x, y]) => this.mapToScreen(x, y));
+      return polygon.every(finitePoint) ? polygon : null;
+    }
+
     drawSelection(rect, active) {
-      if (!this.ctx || !rect) return;
+      if (!this.ctx || !rect || !this.textMap || !this.isCoordinateMappingValid()) return;
+      const bounds = this.canvas.getBoundingClientRect();
+      const left = rect.x - bounds.left, top = rect.y - bounds.top;
       this.ctx.save();
       this.ctx.fillStyle = active
         ? "rgba(255, 200, 97, 0.11)"
         : "rgba(90, 244, 168, 0.07)";
-      this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+      this.ctx.fillRect(left, top, rect.width, rect.height);
       this.ctx.strokeStyle = active
         ? "rgba(255, 200, 97, 0.96)"
         : "rgba(90, 244, 168, 0.9)";
       this.ctx.setLineDash(active ? [7, 5] : []);
       this.ctx.strokeRect(
-        rect.x + 0.5,
-        rect.y + 0.5,
+        left + 0.5,
+        top + 0.5,
         rect.width,
         rect.height
       );
@@ -1667,6 +1801,7 @@
       if (!this.ctx) return;
       const rect = this.canvas.getBoundingClientRect();
       this.ctx.clearRect(0, 0, rect.width, rect.height);
+      if (!this.isCoordinateMappingValid()) return;
       if (this.hoverWord && this.hoverWord !== this.activeWord) {
         this.drawWordBox(this.hoverWord, "rgba(90, 244, 168, 0.86)", true);
       }

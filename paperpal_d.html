@@ -100,6 +100,7 @@
         <button id="btnLoadJson">导入 B 的文字地图 JSON</button>
         <input type="file" id="fileInput" accept=".json" hidden />
       </div>
+      <p id="importStatus" class="sub" role="status" aria-live="polite"></p>
       <div class="controls">
         <span style="font-size:13px;color:var(--muted);align-self:center;">语速：</span>
         <button class="speed-btn" data-speed="0.75">0.75x</button>
@@ -132,174 +133,90 @@
     </div>
   </div>
 
+  <script>window.FEELYREADER_NO_AUTO_TTS = true;</script>
+  <script src="reading_manager.js"></script>
   <script>
-    // 内联完整 ReadingManager，确保双击 HTML 即可离线直接运行
-    const STORAGE_KEYS = {
-      HIGHLIGHTS: "paperpal_d_highlights_v1",
-      HISTORY: "paperpal_d_history_v1",
-      PROGRESS: "paperpal_d_progress_v1",
-      SETTINGS: "paperpal_d_settings_v1"
-    };
-
-    const B_SAMPLE_JSON = {
-      pageId: "969945613a8548bebb57847ad3e8ac98",
-      label: "推荐序 · “心”鲜的世界",
-      lines: [
-        { id: "line-1", reading_order: 1, block_id: "block-1", text: "推荐序" },
-        { id: "line-2", reading_order: 2, block_id: "block-2", text: "“心”鲜的世界" },
-        { id: "line-3", reading_order: 3, block_id: "block-3", text: "陶勇" },
-        { id: "line-4", reading_order: 4, block_id: "block-4", text: "如果做一道填空题，花是的。你会如何回答？" },
-        { id: "line-5", reading_order: 5, block_id: "block-4", text: "睁开眼睛，仿佛置身公园，眼前浮现出姹紫嫣红的" },
-        { id: "line-6", reading_order: 6, block_id: "block-4", text: "鲜花，我们会说，花是美的。" },
-        { id: "line-7", reading_order: 7, block_id: "block-4", text: "闭上眼睛，深吸一口，浓郁的芬芳沁人心脾，我们" },
-        { id: "line-8", reading_order: 8, block_id: "block-4", text: "会说，花是香的。" },
-        { id: "line-9", reading_order: 9, block_id: "block-4", text: "轻轻地抚上花瓣，顺滑而又层层叠叠，感觉仿佛细" },
-        { id: "line-10", reading_order: 10, block_id: "block-4", text: "沙，又好似泉水，我们会说，花是柔的。" },
-        { id: "line-11", reading_order: 11, block_id: "block-4", text: "长期处于黑暗中的视障人士，会如何回答？我们想" },
-        { id: "line-12", reading_order: 12, block_id: "block-4", text: "当然地以为，他们的答案会和我们相近。" },
-        { id: "line-13", reading_order: 13, block_id: "block-4", text: "其实不然。" }
-      ]
-    };
-
-    class ReadingManager {
-      constructor() {
-        this.synth = window.speechSynthesis;
-        this.speed = 1.0;
-        this.voiceEnabled = true;
-        this.lines = [];
-        this.currentIndex = 0;
-        this.status = "idle";
-        this._autoAdvance = false;
-        this._utteranceId = 0;
-        this._listeners = new Set();
-        this.highlights = this._load(STORAGE_KEYS.HIGHLIGHTS, []);
-        this.history = this._load(STORAGE_KEYS.HISTORY, []);
-        this.progressMap = this._load(STORAGE_KEYS.PROGRESS, {});
-        this.loadOcrMap(B_SAMPLE_JSON, true);
-      }
-      loadOcrMap(ocrJson, silent = false) {
-        const sorted = [...(ocrJson.lines || [])].sort((a, b) => (a.reading_order || 0) - (b.reading_order || 0));
-        this.currentPageId = ocrJson.pageId || ocrJson.frame_id || "page-1";
-        this.currentPageLabel = ocrJson.label || "当前书页";
-        this.lines = sorted.map((l, idx) => ({ index: idx, id: l.id || `line-${idx + 1}`, text: l.text.trim() }));
-        const saved = this.progressMap[this.currentPageId];
-        this.currentIndex = saved && saved.index < this.lines.length ? saved.index : 0;
-        this.status = "idle";
-        this._emit();
-        if (!silent) this.speakFeedback(`已载入${this.currentPageLabel}，共${this.lines.length}行`);
-      }
-      play(index = this.currentIndex) {
-        if (!this.lines.length) return;
-        this.currentIndex = Math.max(0, Math.min(index, this.lines.length - 1));
-        this._autoAdvance = true;
-        this.status = "playing";
-        const line = this.lines[this.currentIndex];
-        this.progressMap[this.currentPageId] = { index: this.currentIndex, lineId: line.id };
-        this._save(STORAGE_KEYS.PROGRESS, this.progressMap);
-        this._addHistory("朗读", line.text);
-        this._emit();
-        this._speak(line.text, this.speed, () => {
-          if (this._autoAdvance && this.status === "playing") {
-            if (this.currentIndex + 1 < this.lines.length) this.play(this.currentIndex + 1);
-            else { this.status = "idle"; this._autoAdvance = false; this._emit(); this.speakFeedback("本页已读完"); }
-          }
-        });
-      }
-      pause() { this._autoAdvance = false; this.stopSpeech(); this.status = "paused"; this._emit(); this.speakFeedback("已暂停"); }
-      prevLine() { if (this.currentIndex > 0) this.play(this.currentIndex - 1); else this.speakFeedback("已经是第一行"); }
-      nextLine() { if (this.currentIndex + 1 < this.lines.length) this.play(this.currentIndex + 1); else this.speakFeedback("已经是最后一行"); }
-      setSpeed(rate) { this.speed = rate; this._emit(); this.speakFeedback(`语速${rate}倍`); }
-      saveHighlight(text, lineIds = []) {
-        const line = this.lines[this.currentIndex];
-        const content = (text || (line ? line.text : "")).trim();
-        if (!content) return;
-        this.highlights.unshift({ id: Date.now(), pageLabel: this.currentPageLabel, text: content, lineIds });
-        this._save(STORAGE_KEYS.HIGHLIGHTS, this.highlights);
-        this._addHistory("保存选区", content);
-        this._emit();
-        this.speakFeedback("已保存选区");
-      }
-      speakFeedback(text) { if (this.voiceEnabled) { this._autoAdvance = false; this._speak(text, Math.max(1.0, this.speed)); } }
-      stopSpeech() { this._utteranceId++; this.synth?.cancel(); }
-      _speak(text, rate, onEnd) {
-        if (!this.synth) return;
-        const id = ++this._utteranceId;
-        this.synth.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = "zh-CN";
-        u.rate = rate;
-        u.onend = () => { if (id === this._utteranceId && onEnd) onEnd(); };
-        this.synth.speak(u);
-      }
-      _addHistory(action, detail) {
-        this.history.unshift({ action, detail, time: new Date().toLocaleTimeString("zh-CN", { hour12: false }) });
-        if (this.history.length > 30) this.history.length = 30;
-        this._save(STORAGE_KEYS.HISTORY, this.history);
-      }
-      onStateChange(fn) { this._listeners.add(fn); fn(this); return () => this._listeners.delete(fn); }
-      _emit() { this._listeners.forEach((fn) => fn(this)); }
-      _load(k, fb) { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : fb; } catch { return fb; } }
-      _save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
-    }
-
-    const manager = new ReadingManager();
+    "use strict";
+    const manager = new ReadingManager({ autoListenA: false });
     const lineList = document.getElementById("lineList");
     const hlList = document.getElementById("hlList");
     const hisList = document.getElementById("hisList");
+    const importStatus = document.getElementById("importStatus");
 
-    manager.onStateChange((m) => {
-      document.getElementById("stStatus").textContent = m.status;
-      document.getElementById("stPage").textContent = m.currentPageLabel;
-      document.getElementById("stProgress").textContent = `${m.currentIndex + 1} / ${m.totalLines || m.lines.length}`;
-      document.getElementById("stSpeed").textContent = `${m.speed}x`;
+    function renderList(container, rows, emptyText, format) {
+      container.replaceChildren();
+      if (!rows.length) {
+        const item = document.createElement("li");
+        item.className = "empty";
+        item.textContent = emptyText;
+        container.append(item);
+        return;
+      }
+      for (const row of rows) {
+        const item = document.createElement("li");
+        item.textContent = format(row);
+        container.append(item);
+      }
+    }
 
-      lineList.innerHTML = m.lines.map((l, idx) => `
-        <div class="line-item ${idx === m.currentIndex ? "active" : ""}" data-idx="${idx}">
-          <span class="line-no">第 ${idx + 1} 行</span>
-          <span>${l.text}</span>
-        </div>
-      `).join("");
-
-      hlList.innerHTML = m.highlights.length
-        ? m.highlights.map((h) => `<li><strong>[${h.pageLabel}]</strong> ${h.text}</li>`).join("")
-        : `<li class="empty">暂无保存的选区</li>`;
-
-      hisList.innerHTML = m.history.length
-        ? m.history.slice(0, 10).map((it) => `<li>[${it.time}] ${it.action}：${it.detail}</li>`).join("")
-        : `<li class="empty">暂无历史记录</li>`;
+    const unsubscribe = manager.onStateChange((state) => {
+      document.getElementById("stStatus").textContent = state.status;
+      document.getElementById("stPage").textContent = state.pageLabel;
+      document.getElementById("stProgress").textContent = `${state.totalLines ? state.currentIndex + 1 : 0} / ${state.totalLines}`;
+      document.getElementById("stSpeed").textContent = `${state.speed}x`;
+      if (state.lastError) importStatus.textContent = state.lastError;
+      lineList.replaceChildren();
+      manager.lines.forEach((line, index) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "line-item" + (index === state.currentIndex ? " active" : "");
+        item.setAttribute("aria-pressed", String(index === state.currentIndex));
+        const number = document.createElement("span");
+        number.className = "line-no";
+        number.textContent = `第 ${index + 1} 行`;
+        const text = document.createElement("span");
+        text.textContent = line.text;
+        item.append(number, text);
+        item.onclick = () => manager.play(index);
+        lineList.append(item);
+      });
+      renderList(hlList, manager.getHighlights(), "暂无保存的选区", (item) => `[${item.pageLabel || "当前书页"}] ${item.text}`);
+      renderList(hisList, manager.getHistory().slice(0, 10), "暂无历史记录", (item) => `[${item.time || ""}] ${item.action || ""}：${item.detail || ""}`);
+      document.querySelectorAll(".speed-btn").forEach((button) => {
+        button.classList.toggle("active", Number(button.dataset.speed) === state.speed);
+      });
     });
 
-    lineList.addEventListener("click", (e) => {
-      const item = e.target.closest(".line-item");
-      if (item) manager.play(Number(item.dataset.idx));
-    });
-
-    document.getElementById("btnPlay").onclick = () => manager.play(manager.currentIndex);
+    document.getElementById("btnPlay").onclick = () => manager.resume();
     document.getElementById("btnPause").onclick = () => manager.pause();
     document.getElementById("btnPrev").onclick = () => manager.prevLine();
     document.getElementById("btnNext").onclick = () => manager.nextLine();
     document.getElementById("btnSave").onclick = () => manager.saveHighlight();
     document.getElementById("btnMockSelect").onclick = () => {
       const slice = manager.lines.slice(manager.currentIndex, manager.currentIndex + 2);
-      manager.saveHighlight(slice.map((s) => s.text).join(" "), slice.map((s) => s.id));
+      manager.onSelectRegion(slice.map((line) => line.text).join(" "), slice.map((line) => line.id));
     };
-
-    document.querySelectorAll(".speed-btn").forEach((btn) => {
-      btn.onclick = () => {
-        document.querySelectorAll(".speed-btn").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        manager.setSpeed(Number(btn.dataset.speed));
-      };
+    document.querySelectorAll(".speed-btn").forEach((button) => {
+      button.onclick = () => manager.setSpeed(Number(button.dataset.speed));
     });
-
     const fileInput = document.getElementById("fileInput");
     document.getElementById("btnLoadJson").onclick = () => fileInput.click();
-    fileInput.onchange = async (e) => {
-      const file = e.target.files[0];
+    fileInput.onchange = async () => {
+      const file = fileInput.files?.[0];
+      fileInput.value = "";
       if (!file) return;
-      const json = JSON.parse(await file.text());
-      manager.loadOcrMap(json);
+      try {
+        const json = JSON.parse(await file.text());
+        if (!manager.loadOcrMap(json)) throw new Error("JSON 需要包含文字地图的 lines 数组。");
+        importStatus.textContent = `已载入 ${manager.currentPageLabel}，共 ${manager.lines.length} 行。`;
+      } catch (error) {
+        importStatus.textContent = `导入失败：${error.message}`;
+      }
     };
+    window.addEventListener("pagehide", (event) => {
+      if (event.persisted) manager.pause(true);
+      else { unsubscribe(); manager.destroy(); }
+    });
   </script>
 </body>
 </html>

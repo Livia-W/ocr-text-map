@@ -157,6 +157,29 @@ class ServerTests(unittest.TestCase):
         result = self.client.options("/api/ocr", headers={"Origin": "https://unrelated.example", "Access-Control-Request-Method": "POST"})
         self.assertNotIn("access-control-allow-origin", result.headers)
 
+    def test_pages_origin_is_allowed_without_credentials(self):
+        result = self.client.options("/api/ocr", headers={
+            "Origin": "https://livia-w.github.io", "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        })
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.headers["access-control-allow-origin"], "https://livia-w.github.io")
+        self.assertNotIn("access-control-allow-credentials", result.headers)
+
+    def test_integration_assets_and_debug_page(self):
+        for path, expected in (("/reader-controller.js", "FeelyReaderController"),
+                               ("/ocr-debug", "<html")):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(expected, response.text)
+
+    def test_repository_files_are_not_served(self):
+        for path in ("/.git/config", "/.env", "/.tools/github_publish.py", "/outputs/chinese-demo/chinese.png",
+                     "/mobile_ocr/server.py", "/vendor/%2e%2e%2f.env", "/vendor/.hidden"):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 404)
+
     def test_static_index_if_available(self):
         if not (STATIC_DIRECTORY / "index.html").is_file():
             self.skipTest("静态页面正在由另一任务实现。")

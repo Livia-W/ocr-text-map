@@ -240,7 +240,7 @@ async function takePhoto(automatic = false, detectedPages = []) {
     $('resolution').textContent = `照片：${photo.width} × ${photo.height} px`;
     message(pages.length?'原图及独立页面已保存，可分别下载。透视校正不包含曲面校正。':'未确认书页，仅保存手动拍摄原图。');
     // Integration point: event.detail = { blob, width, height }. No upload is performed.
-    window.dispatchEvent(new CustomEvent('bookreader:captured', { detail: {...photo,pages,metadata} }));
+    window.dispatchEvent(new CustomEvent('bookreader:captured', { detail: {...photo,pages,metadata,automatic} }));
     for(const reference of identity?.updated||[])window.dispatchEvent(new CustomEvent('bookreader:page-updated',{
       detail:{pageId:reference.id,referenceImage:reference.referenceImage,label:reference.label,points:reference.points,matrix:reference.matrix,
         width:reference.width,height:reference.height,captureCount:identity.captureCount,automatic}

@@ -1,232 +1,202 @@
-# B 模块集成契约
+# FeelyReader 集成契约
 
-B 将一张照片转换为带坐标的文字地图。模块边界如下：
+入口为仓库根目录 `index.html`。A、B、C、D 由 `reader-controller.js` 编排，`e-app.js` 提供 E 界面；Python 是可选后端。默认静态入口为 <https://livia-w.github.io/ocr-text-map/>，部署约定见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
-| 模块 | 负责范围 | 与 B 的关系 |
-| --- | --- | --- |
-| A：采集 | 取得照片或已归一化方向的图像 | 向 B 提供照片 bytes 或 BGR 数组 |
-| B：OCR 与文字地图 | 方向/分区校准、每区校正、OCR、文字行和基础阅读顺序 | 输出本契约中的文档结果 |
-| C：手势 | 手势检测与选区逻辑 | 消费 `document_id`、原始照片坐标及文字行 |
-| D：阅读 | 阅读状态、语音与交互策略 | 消费阅读顺序、文字行和文字块 |
-| E：应用 | 屏幕、文件与模块编排 | 显示照片/分区，负责屏幕坐标换算和调用生命周期 |
+## 1. 模块与生命周期
 
-仓库附带照片调试页用于验证 B 的输入输出。其他模块通过 Python 接口或 HTTP 接口对接。
+| 模块 | 接口与职责 |
+| --- | --- |
+| A | `window.BookReader`、`bookreader:captured`、`bookreader:page-updated`；相机、透视参考图及实时跟踪 |
+| B 浏览器 | `window.FeelyBrowserOCR`；Tesseract.js `chi_sim+eng`，输出文字行和照片坐标 |
+| B Python | `OCRPipeline.process()` / `process_image()`、`POST /api/ocr`；完整照片校正与 RapidOCR |
+| C | `window.GestureEngine`；复用 A 视频，消费参考坐标中的文字行 |
+| D | `window.ReadingManager`；语音、进度、高亮、历史和反馈 |
+| E | 选择照片/引擎/参数/页面，展示结果，管理取消、旧结果和手势权限 |
 
-## 1. 输入
+修改输入、参数或参考时，整合控制器取消旧识别并使旧回调失效。结果只能更新与它对应的输入；切页、手动暂停和失去跟踪时清除待点读词。浏览器 OCR 同时只运行一个任务，成功任务复用 worker，取消会终止当前 worker，后续请求重新初始化。
 
-### 编码照片 bytes
+## 2. A：照片与参考跟踪
+
+```javascript
+window.addEventListener('bookreader:captured', event => {
+  const { blob, width, height, pages, metadata } = event.detail;
+  // blob: 完整原始 JPEG。
+  // pages: 每页 {blob, pageId, label, width, height, points, matrix, evidence}。
+  // metadata.captureCount 标识本次参考采集批次。
+});
+
+const video = window.BookReader.getVideoElement();
+const stopFrames = window.BookReader.subscribeVideoFrames(frame => {
+  // frame.type 为 frame 或 state；视频元素是实时对象，不是冻结快照。
+});
+const stopTracking = window.BookReader.subscribePageTracking(envelope => {
+  // envelope.pages[] 提供 pageId、valid、referenceCaptureCount、timestamp、
+  // referenceSize、videoSize、currentVideoToReference、referenceToCurrentVideo。
+});
+// 页面退出或销毁控制器时调用 stopFrames()、stopTracking()。
+```
+
+`pages[].points` 是完整原图像素中的 TL/TR/BR/BL；`pages[].matrix` 为按行存储的 9 个数，将完整原图映射到该透视参考图。A 生成的是平面透视图，不代表已执行非线性曲面校正。
+
+当前整合路径对每个 `pages[].blob` 单独识别，并固定 `rotation:0`、`split:none`，不再次拆分相机参考图。E 一次选择一个参考页，通过下拉列表切换。照片上传路径可以使用手动旋转及左右页/栏分区。
+
+跟踪矩阵也为 9 个数：`referenceToCurrentVideo` 将参考页像素映射到当前视频固有像素；`currentVideoToReference` 为反向。对 `[x,y,1]` 乘矩阵后除以第三分量。跟踪 `timestamp` 使用 `performance.now()` 毫秒，不能与日志事件的 Unix 秒混用。
+
+C 接受跟踪前必须同时满足：
+
+- `valid` 为真，跟踪年龄小于 400 ms。
+- `referenceCaptureCount` 等于所选参考的采集次数。
+- `referenceSize` 与该参考尺寸一致，`videoSize` 与当前视频尺寸一致。
+- 两个矩阵均可用，当前选择仍对应该参考页。
+
+跟踪失效、后台、相机停止或参考切换时，停止点读并清除旧标记。上传照片或导入 JSON 没有这些 A 参考条件，不能用静态照片假设实时纸面坐标仍然有效。进一步的 A 字段说明见 [A_HANDOFF.md](../A_HANDOFF.md)。
+
+## 3. B：两种运行方式
+
+### 默认浏览器 OCR
+
+```javascript
+const ocr = new FeelyBrowserOCR();
+const cancel = new AbortController();
+const result = await ocr.recognize(photoBlob, {
+  rotation: 90, split: 'pages', split_position: 0.48,
+  mode: 'auto', max_side: 1920, min_confidence: 0.45
+}, {
+  signal: cancel.signal,
+  onProgress: fraction => console.log(fraction) // 0..1
+});
+// cancel.abort() 取消；页面销毁时 ocr.destroy()。
+```
+
+Tesseract.js 6.0.1 真实加载 `chi_sim+eng` 并读取 `blocks → paragraphs → lines`，不是只输出文本。浏览器支持 EXIF 正向解码、顺时针旋转、左右分区和每区缩放。`mode: auto/perspective` 会明确提示未执行 B 内部的透视或曲面校正；`perspective_applied`、`curvature_applied` 为假，`curvature_mesh` 为 null。A 已提供的透视参考可以直接作为 B 输入。
+
+### 可选 Python
 
 ```python
 from pathlib import Path
 from mobile_ocr.pipeline import OCRPipeline
 
-pipeline = OCRPipeline()
+pipeline = OCRPipeline()  # 建议在进程内复用
 result = pipeline.process(
-    Path("双页.jpg").read_bytes(),
-    mode="auto",
-    min_confidence=0.45,
-    max_side=1920,
-    rotation=90,
-    split="pages",
-    split_position=0.48,
+    Path('双页.jpg').read_bytes(),
+    rotation=90, split='pages', split_position=0.48,
+    mode='auto', max_side=1920, min_confidence=0.45,
 )
 ```
 
-支持 JPEG、PNG、WebP 静态照片，最多 8 MiB、2000 万像素，宽高至少 32 像素。B 会先按 EXIF 归一化方向，再执行显式校准。返回的原始照片坐标以 **EXIF 正向后的图像**为基准，而不是 JPEG 文件可能存储的横向像素排列。
+也可调用 `pipeline.process_image(image, **options)`：`image` 必须是已按显示方向归一化的 `uint8`、`height × width × 3` BGR NumPy 数组。B 会复制数组；数组没有 EXIF，调用方不得期待 B 再次自动修正方向。
 
-### BGR NumPy 图像
+编码输入支持 JPEG/PNG/WebP，最大 8 MiB、2000 万像素，宽高至少 32 像素。8 MiB 限制针对编码照片，不限制合法解码数组的内存字节数。Python 实例忙时抛 `BusyError`，无效输入抛 `ValueError`，模型初始化/推理失败抛 `OCRRuntimeError`。浏览器并发返回名为 `BusyError` 的错误，取消返回 `AbortError`；错误信息不应被当作空白页结果。
 
-```python
-import numpy as np
-from mobile_ocr.pipeline import OCRPipeline
+### 参数与处理顺序
 
-# A 提供的 frame 必须已经按显示方向归一化；此处仅示意形状。
-frame = np.full((1200, 1600, 3), 255, dtype=np.uint8)
-pipeline = OCRPipeline()
-result = pipeline.process_image(
-    frame,
-    rotation=0,
-    split="columns",
-    split_position=0.5,
-    mode="auto",
-    max_side=1920,
-)
-```
-
-数组必须是 `uint8`、`height × width × 3`、BGR 通道顺序，宽高至少 32 像素，最多 2000 万像素。NumPy 输入没有 EXIF 元数据；A 应在调用前完成方向归一化。8 MiB 限制针对编码照片，不限制合法解码数组的内存字节数。B 会复制数组作为本次处理的快照。
-
-建议在进程内复用一个 `OCRPipeline`，以复用模型。一次只提交一张照片，同一实例忙时抛出 `BusyError`；输入无效时抛出 `ValueError`，模型初始化或推理失败时抛出 `OCRRuntimeError`。
-
-## 2. 校准与处理顺序
-
-1. 解码并归一化 EXIF 方向，或验证 A 提供的 BGR 数组。
-2. 按 `rotation` 顺时针旋转整张照片。
-3. 按旋转后宽度的 `split_position` 拆成左右两个区域，或保留整张。
-4. 每区独立缩放、检测页框、透视校正，并根据 `mode` 尝试曲面展开。
-5. 每区 OCR、合并行片段、分析基础阅读顺序，最后组合为文档结果并回映照片坐标。
-
-| 参数 | 默认值 | 有效值与语义 |
+| 参数 | 默认值 | 语义 |
 | --- | --- | --- |
-| `rotation` | `0` | 顺时针 `0/90/180/270`，分区前应用 |
-| `split` | `none` | `none` 整张；`pages` 左右两页；`columns` 左右双栏 |
-| `split_position` | `0.5` | `0.1–0.9`，相对于旋转后整张宽度 |
-| `mode` | `auto` | `none` 只缩放；`perspective` 透视；`auto` 透视并尝试基线展开 |
-| `min_confidence` | `0.45` | `0–1` |
-| `max_side` | `1920` | `640–2560`，每个分区的处理最大边，不放大小图 |
+| `rotation` | `0` | 顺时针 `0/90/180/270`，在分区前执行 |
+| `split` | `none` | 整张 `none`；左右页 `pages`；左右双栏 `columns` |
+| `split_position` | `0.5` | 旋转后宽度的 `0.1–0.9` 比例 |
+| `max_side` | `1920` | 每区处理最大边 `640–2560`，不放大小图 |
+| `min_confidence` | `0.45` | 保留文字行的最低分值，范围 `0–1` |
+| `mode` | `auto` | Python：`none` 只缩放、`perspective` 透视、`auto` 透视并尝试基线展开；浏览器返回校正能力提示 |
 
-`pages` 和 `columns` 都使用一条人工指定的纵向分割线。分割边界为 `round(rotated_width * split_position)`；左右两区完整覆盖旋转后的图像且不重叠。每区宽高至少 32 像素。返回顺序为旋转后左区、右区，区内采用横排阅读顺序启发式。
+顺序为 EXIF 正向解码 → 手动旋转 → 左右裁剪 → 每区缩放/校正/OCR → 回映输入照片坐标。分割边界为 Python `round(rotated_width * split_position)`，浏览器保持相同的半数取偶规则。两区完整覆盖旋转后照片且不重叠，每区至少 32 × 32 像素；阅读组合顺序为左区、右区。当前仅支持左右两个区域和横排阅读顺序。
 
-## 3. HTTP
-
-本地运行：
+### Python HTTP
 
 ```bash
 python -m mobile_ocr serve
 ```
 
-`GET /api/health` 返回服务状态、引擎、版本和 `ready`。该请求不会触发模型加载。
+根路由 `/` 是整合应用；`/ocr-debug` 是 B 独立照片调试页；`/docs` 提供 API 文档。`GET /api/health` 返回状态、引擎、版本和 `ready`，不会触发模型加载。
 
-`POST /api/ocr` 使用图片原始二进制作为请求体，参数位于查询字符串：
-
-```bash
-curl -X POST 'http://127.0.0.1:8000/api/ocr?rotation=90&split=pages&split_position=0.48&mode=auto&min_confidence=0.45&max_side=1920' \
-  -H 'Content-Type: image/jpeg' \
-  --data-binary '@book.jpg' \
-  -o result.json
+```powershell
+curl.exe -X POST "http://127.0.0.1:8000/api/ocr?rotation=90&split=pages&split_position=0.48&mode=auto&min_confidence=0.45&max_side=1920" -H "Content-Type: image/jpeg" --data-binary "@双页.jpg" -o result.json
 ```
 
-PowerShell 使用 `curl.exe`，或参考中文 README 中的单行示例。`Content-Type` 可为 `image/jpeg`、`image/png`、`image/webp`；请求体直接传图片 bytes。接口说明位于 `/docs`。
+请求体直接为原始图片 bytes，不使用 multipart 或 JSON base64。内容类型为 `image/jpeg`、`image/png`、`image/webp`。错误响应为 `{"error":"说明"}`：400 输入/校准无效，413 超过 8 MiB，415 内容类型不支持，422 查询参数无效，503 实例忙或引擎不可用。调用方应等待或退避重试，不反复并发提交。
 
-| 状态 | 含义 | 调用方处理 |
-| --- | --- | --- |
-| `200` | 已完成，返回文档结果 | 检查文字、几何回退和区域信息 |
-| `400` | 图片损坏、格式/尺寸或校准参数不符合要求 | 修正输入 |
-| `413` | 请求体超过 8 MiB | 压缩编码图片后重新提交 |
-| `415` | 请求内容类型不支持 | 使用受支持的图片内容类型 |
-| `422` | 查询参数无效 | 修正参数范围或枚举 |
-| `503` | 实例正忙，或 OCR 引擎不可用 | 忙时等待并退避重试；引擎故障时检查服务日志 |
+Pages 页面不包含 Python 服务。从 Pages 调用时填写完整 HTTPS `/api/ocr` 地址，服务配置 `FEELYREADER_ALLOWED_ORIGINS`，默认允许 `https://livia-w.github.io`。同源本地页面可留空使用本地接口；详见 [部署说明](DEPLOYMENT.md)。
 
-错误响应形如 `{"error":"说明"}`。调用方应等待当前识别完成；该接口不提供后台任务队列或持久任务记录。
+## 4. B 文档结果
 
-## 4. 输出结构
-
-消费方以 `document_id`、`regions`、`lines`、`blocks` 作为集成入口。辅助字段用于校验、导出和调试。
+浏览器与 Python 共用下列结构。引擎、排版方法、能力提示和具体识别结果可以不同。
 
 | 顶层字段 | 含义 |
 | --- | --- |
-| `schema_version` | 输出结构版本，值为字符串 `"2.0"` |
-| `document_id` | 本次处理结果的标识 |
-| `source_size` | EXIF 正向原始照片的 `[width, height]` |
-| `rotated_size` | 显式校准旋转后整张照片尺寸 |
-| `calibration` | `{rotation_clockwise, split, split_position}` |
-| `regions` | 校正分区列表 |
-| `lines` | 全文文字行，包含分区关联和阅读顺序 |
-| `blocks` | 文字块，包含分区关联和所属行 |
-| `text` | 按输出阅读顺序组合的文本 |
-| `coordinates` | 本结果的坐标约定，见下方示例 |
-| `warnings` | 页框、曲面等回退和局限提示 |
-| `timing_ms` | 解码、几何、OCR、总耗时，单位毫秒 |
+| `schema_version` | 字符串 `"2.0"` |
+| `document_id` | 本次文档结果标识；行编号仅在该结果内有效 |
+| `engine` | 浏览器 `tesseract.js-6.0.1`，或 Python RapidOCR 标识 |
+| `source_size` | EXIF 正向、手动旋转前的输入照片 `[width,height]` |
+| `rotated_size` | 手动旋转后整张照片尺寸 |
+| `calibration` | `{rotation_clockwise,split,split_position}` |
+| `regions` | 各分区图像、裁剪范围、行编号、校准矩阵和几何变换 |
+| `lines` / `blocks` | 全局唯一编号的文字行和文字块，均包含 `region_id` |
+| `text` | 按输出阅读顺序组合的行文本 |
+| `warnings` / `timing_ms` | 能力/回退提示和解码、几何、OCR、总耗时 |
 
-`coordinates` 的内容为：
+每个 `regions[]` 包含 `id`、`label`、`kind`、`line_ids`、`polygon_source`、`rectified_size`、JPEG data URL `rectified_image`、`calibration`、`transform` 和 `warnings`。未拆分时为 `page-1`；拆分使用 `page-1/page-2` 或 `column-1/column-2`。`polygon_source` 表示校准裁剪的范围，不等于自动检测到的最终纸张边界。
 
-```json
-{
-  "unit": "pixel",
-  "origin": "top-left",
-  "x_axis": "right",
-  "y_axis": "down",
-  "bbox_format": "x,y,width,height",
-  "source_orientation": "EXIF-transposed",
-  "scope": "single-photo",
-  "text_location_level": "line",
-  "rectified_space": "region-local"
-}
+每个 `lines[]` 包含 `id`、`reading_order`、`region_id`、`block_id`、`text`、`confidence`、`polygon_source`、`bbox_source`、`polygon_rectified`、`bbox_rectified`。多边形单位为像素；矩形格式为 `[x,y,width,height]`。行置信度不是整行完全无错的概率，也不能保证没有漏字；两种引擎的分值不应作为相同标尺比较。
+
+`blocks[]` 包含 `id`、`region_id`、`type`、`line_ids`、`bbox`、`coordinate_space`。`bbox` 属于该分区校正图，`coordinate_space` 为 `rectified`。Python 的标题判断是几何启发式，浏览器使用 Tesseract 的块/段/行输出顺序；均不宣称语义版式理解。
+
+顶层 `rectified_image`、`rectified_size`、`transform` 只是 `regions[0]` 的兼容视图。多区调用方必须用 `line.region_id` 找对应分区，不能用第一分区变换解释其余文字。旧 `frame_id` 已由 `document_id` 替代。
+
+## 5. 坐标链
+
+所有像素空间原点左上，x 向右、y 向下。B 的矩阵为嵌套 3×3 数组；A 的直播跟踪矩阵为按行存储的 9 个数，适配时不要混淆格式。
+
+| 空间 | 基准 |
+| --- | --- |
+| B `source` | 本次输入照片的 EXIF 正向像素，尚未手动旋转 |
+| B `rotated` / region | 手动旋转后的整张照片，及其左右裁剪局部空间 |
+| B 透视平面 | 每区缩放/透视校正后、曲面展开前的平面 |
+| B `rectified` | 每区最终校正图，必须结合 `region_id` 使用 |
+| A `reference` | A 导出的逐页透视图；整合流程逐页将它交给 B，因此等同于该次 B 的 `source` |
+| A `currentVideo` | 当前视频的固有、非镜像像素 |
+| screen | CSS 显示坐标；还需要考虑 `object-fit:contain` 和留白 |
+
+B `regions[].calibration.source_to_region_matrix` 已组合手动旋转和裁剪，逆矩阵为 `region_to_source_matrix`。90° 顺时针的像素映射为 `x'=source_height-1-y, y'=x`。
+
+B `regions[].transform.source_to_page_matrix` 已进一步组合缩放和透视，直接把 B 原图映射到本区透视平面；`page_to_source_matrix` 为逆矩阵。`source_size` 是 B 原图尺寸，`region_source_size` 是本区旋转裁剪后尺寸，`rectified_size` 是本区输出尺寸。不要重复应用校准旋转或裁剪。
+
+Python 曲面展开时 `curvature_mesh` 为单调纵向逆映射，回映步骤为：
+
+1. 按 `mesh.x`，在每条 `mesh.source_y` 上对校正点的 x 插值。
+2. 以 `mesh.target_y` 为节点，对校正点 y 插值得到 `y_page`；x 不变。
+3. 对 `(x,y_page,1)` 应用 `page_to_source_matrix` 并除以齐次分量。
+
+网格为 null 时跳过前两步。正向先应用 `source_to_page_matrix`，再反解网格。只用一个单应性矩阵不能替代非线性曲面回映。B 已返回 `polygon_source`，消费方应保留全部边缘采样点。
+
+### 接入 C
+
+整合控制器把 C 的文字地图统一到 A 参考坐标：使用 B 的 `bbox_source/polygon_source`，地图尺寸设为 B `source_size`。手指从视频归一化位置转为 `currentVideo` 像素，经 A `currentVideoToReference` 映射到参考图；反向画框使用 `referenceToCurrentVideo`，再换成屏幕坐标。
+
+因此无需把 B 非线性变换再次叠加到已经回映的 `polygon_source` 上。若自行改用 B 的 `rectified` 图作为 C 地图，则必须同时实现曲面、透视、裁剪与视频跟踪的完整链。C 的词位置是行内估算，不能称为模型测得的逐字坐标。
+
+## 6. D 与 E
+
+整合页在加载 `reading_manager.js` 前设置 `window.FEELYREADER_NO_AUTO_TTS = true`，避免默认实例与控制器实例争抢同一语音队列。独立使用时仍保留兼容的 `window.BookReaderTTS`。
+
+```javascript
+const reader = new ReadingManager({
+  autoListenA: false,
+  initialMap: { document_id: 'empty', lines: [] }
+});
+reader.loadOcrMap(result, { silent: true });
+const unsubscribe = reader.onStateChange(state => console.log(state.status));
+// reader.play(), pause(true), resume(), prevLine(), nextLine(), setSpeed(rate)
+// reader.onTapWord(text, lineId), onSlideWords(text, pixelsPerSecond)
+// reader.onSelectRegion(text, lineIds), getHighlights(), getHistory()
+// 销毁时：unsubscribe(); reader.destroy();
 ```
 
-对 NumPy 输入，`source_orientation` 表示调用方已归一化的方向约定，B 不再从数组读取 EXIF。
+`loadOcrMap` 识别 `document_id`，清除旧语音/反馈；换页等待 OCR 时不保留可朗读旧行。反馈状态为 `feedback`，结束后恢复原正文动作或暂停状态；恢复从当前行/短句开头开始。设备不支持或拒绝 TTS 时返回状态中的 `lastError`，不模拟朗读完成。
 
-### 分区 `regions[]`
+C 同一次词焦点还可能产生语音注释，不能把两条通道都接成重复正文播报。控制器只接一次词焦点并聚合短时间内的连续词；暂停/恢复注释单独处理。手动暂停时同时屏蔽 C 的新词派发。双指选区按命中的文字行保存，当前不承诺逐字范围精度。
 
-| 字段 | 含义 |
-| --- | --- |
-| `id` | `page-1/page-2` 或 `column-1/column-2`；未拆分时为 `page-1` |
-| `label` | 分区中文标签 |
-| `kind` | `page` 或 `column` |
-| `rectified_size` | 本分区校正图的 `[width, height]` |
-| `rectified_image` | 本分区校正 JPEG 的 data URL |
-| `polygon_source` | 旋转后裁剪分区的四角回映到原始照片；表示裁剪范围 |
-| `line_ids` | 属于本分区的全局行编号 |
-| `calibration` | 旋转、裁剪范围及照片↔分区的校准元数据 |
-| `transform` | 原始照片↔本区透视平面与曲面校正图的几何变换 |
-| `warnings` | 本区页框、曲面或识别提示 |
+高亮、历史和进度使用浏览器本地存储。E 使用文本节点显示 OCR/导入数据，不能把它们直接写入 `innerHTML`。导入 JSON 不会自动获得纸面跟踪资格；切换输入或页面后不能沿用旧文档的行编号作为持久锚点。
 
-分区的 `polygon_source` 表示校准裁剪覆盖范围，自动页框校正可能在该范围内进一步裁剪。`calibration.bounds_rotated` 格式为 `[x, y, width, height]`，指旋转后整张照片中的裁剪区域；其 `source_size`、`rotated_size`、`region_size` 都是 `[width, height]`。
+## 7. 验证边界
 
-### 文字行 `lines[]`
-
-| 字段 | 含义 |
-| --- | --- |
-| `id` | 本文档结果内唯一的 `line-N` 编号 |
-| `region_id` | 所属分区 `regions[].id` |
-| `block_id` | 所属文字块编号 |
-| `reading_order` | 从 1 开始的全文阅读顺序 |
-| `text` | 行文本 |
-| `confidence` | 行识别置信度 |
-| `polygon_source` | 原始 EXIF 正向照片上的边缘采样多边形 |
-| `bbox_source` | 上述多边形的包围矩形 |
-| `polygon_rectified` | 所属分区校正图中的局部识别四边形 |
-| `bbox_rectified` | 上述四边形的包围矩形 |
-
-### 文字块 `blocks[]`
-
-块包含本文档内唯一的 `id`、`region_id`、`type`、`line_ids`、`bbox` 和 `coordinate_space`。`type` 为启发式 `heading` 或 `text`；`bbox` 在该分区校正图中，`coordinate_space` 为 `"rectified"`。块类别和排列来自几何启发式，不是语义结构标注。
-
-编号的作用域是本次 `document_id`。另一张照片或同一照片重跑后产生的新结果，行编号不能用作持久文字锚点。消费方可使用 `(document_id, line_id)` 标识一次结果中的文字行。
-
-### 兼容字段
-
-顶层 `rectified_image`、`rectified_size`、`transform` 仅对应 `regions[0]`，供旧的单区消费方过渡。多区调用方应明确使用 `regions[]`，并通过 `line.region_id` 选择图像和变换。旧的 `frame_id` 已移除，统一使用 `document_id`。
-
-## 5. 坐标约定与回映
-
-所有几何坐标的原点为左上角，x 向右、y 向下，单位为像素。尺寸表示为 `[width, height]`，包围矩形表示为 `[x, y, width, height]`。
-
-| 坐标空间 | 基准 |
-| --- | --- |
-| `source` | EXIF 正向、尚未进行手动旋转的原始照片 |
-| `rotated` | 用户顺时针旋转后的整张照片 |
-| 区域校准坐标 | `rotated` 中的裁剪区局部坐标 |
-| 透视平面 | 每区缩放和透视校正后的平面 |
-| `rectified` | 每区曲面展开后的校正图局部坐标 |
-
-原始照片叠加或跨区查找使用 `polygon_source`。区内校正图叠加使用 `polygon_rectified`，并按 `region_id` 选择分区。E 应自行处理图像显示时的缩放、留白和屏幕坐标；B 的坐标不包含显示布局、设备像素比或手势屏幕坐标。
-
-### 校准矩阵
-
-`regions[].calibration` 中的 `source_to_region_matrix` 已组合顺时针旋转与裁剪平移；`region_to_source_matrix` 为其逆矩阵。90 度顺时针的像素映射是 `x' = source_height - 1 - y, y' = x`。
-
-### 透视与曲面变换
-
-`regions[].transform.source_to_page_matrix` 已组合 **原始照片旋转、裁剪、缩放和透视校正**，直接将原始照片坐标映射到该区透视平面。`page_to_source_matrix` 为其逆矩阵，不能再叠加一次校准旋转或裁剪。
-
-变换中的 `source_size` 是原始照片尺寸，`region_source_size` 是旋转裁剪后的本区尺寸，`rectified_size` 是本区校正图尺寸。`perspective_applied`、`curvature_applied` 表示实际是否执行相应校正；返回的 `warnings` 说明回退情况。
-
-`curvature_mesh` 为校正图到透视平面的纵向逆映射，未做曲面校正时为 `null`：
-
-1. 对校正图中的点 `(x, y)`，在 `mesh.x` 上对每一行 `mesh.source_y` 插值，得到该 x 位置的各条原始基线高度。
-2. 以 `mesh.target_y` 为节点，对 y 分段线性插值，得到透视平面中的 `y_page`；x 不变。
-3. 对 `(x, y_page, 1)` 应用 `page_to_source_matrix`，并除以齐次坐标，得到原始照片中的点。
-
-没有曲面网格时跳过前两步。正向变换先应用 `source_to_page_matrix`，再反解该单调纵向网格。曲面变换是非线性的，不能只靠一个 3×3 矩阵完成。
-
-B 已为文字行生成回映后的边缘采样多边形。消费方绘制 `polygon_source` 时保留全部顶点；只映射四个角会把弯曲边界错误画成直线。
-
-## 6. 集成检查
-
-- A 与 E 使用和 `source_size` 相同的 EXIF 正向照片，避免重复应用 EXIF 或手动旋转。
-- C 在同一份照片坐标中查找 `polygon_source`，使用 `document_id` 防止串用另一张照片的行。
-- D 按 `reading_order` 和 `line_ids` 处理本文档文字，不把行编号当作跨照片追踪标识。
-- E 按 `region_id` 选择校正图与局部坐标，并展示需要用户检查的回退提示。
-- 联调样本应覆盖单页、90 度旋转、非中点双页/双栏、页框不清晰和曲面证据不足的情况。
-
-当前范围为左右两页/两栏、横排印刷文字和轻中度曲面；没有逐字坐标、语义版式模型、手势、语音或持久跟踪。照片调试页是 B 的验证入口，最终应用行为由 E 编排。
+Node 受控测试覆盖模块接口、取消、坐标映射、跟踪时效/尺寸/采集批次、TTS 生命周期和 UI 状态；Python 测试覆盖完整 B 流程。真实浏览器检查需另外覆盖模型资源、中文 OCR、EXIF、相机权限和语音。纸面点读精度、双指遮挡、反光、真实翻页、耗电发热和持续运行性能仍需目标手机实测，不能由替身测试推断。

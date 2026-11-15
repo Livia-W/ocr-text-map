@@ -1,6 +1,7 @@
 """Local photo OCR API and its browser debugging interface."""
 
 from enum import IntEnum
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -8,6 +9,7 @@ from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 from starlette.requests import ClientDisconnect
@@ -18,6 +20,12 @@ from .pipeline import BusyError, OCRPipeline, OCRRuntimeError
 
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 STATIC_DIRECTORY = Path(__file__).resolve().parent / "static"
+WEB_DIRECTORY = Path(__file__).resolve().parent.parent
+WEB_ASSETS = {
+    "index.html", "styles.css", "app.js", "camera.js", "opencv-loader.js",
+    "page-detector.js", "page-output.js", "page-content.js", "stability.js", "live-bridge.js",
+    "gesture-engine.js", "reading_manager.js", "browser-ocr.js", "reader-controller.js", "e-app.js",
+}
 ACCEPTED_CONTENT_TYPES = {
     "image/jpeg", "image/png", "image/webp", "application/octet-stream", "",
 }
@@ -38,11 +46,17 @@ def create_app(pipeline: Any = None) -> FastAPI:
     """Create the service without loading OCR models or downloading weights."""
     app = FastAPI(title="照片 OCR 与版面分析调试", version=__version__)
     app.state.pipeline = pipeline if pipeline is not None else OCRPipeline()
+    allowed_origins = [origin.strip() for origin in os.getenv(
+        "FEELYREADER_ALLOWED_ORIGINS", "https://livia-w.github.io").split(",") if origin.strip()]
+    if allowed_origins:
+        app.add_middleware(CORSMiddleware, allow_origins=allowed_origins,
+                           allow_methods=["GET", "POST"], allow_headers=["Content-Type"],
+                           allow_credentials=False)
 
     @app.middleware("http")
     async def prevent_caching(request: Request, call_next):
         response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
+        response.headers["Cache-Control"] = "public, max-age=86400" if request.url.path.startswith("/vendor/") else "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response
 
@@ -138,12 +152,33 @@ def create_app(pipeline: Any = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     async def index():
+        if (WEB_DIRECTORY / "index.html").is_file():
+            return FileResponse(WEB_DIRECTORY / "index.html")
         index_path = STATIC_DIRECTORY / "index.html"
         if not index_path.is_file():
             return _error("照片调试页面文件缺失，请检查安装目录。", 503)
         return FileResponse(index_path)
 
     app.mount("/static", StaticFiles(directory=STATIC_DIRECTORY, check_dir=False), name="static")
+
+    @app.get("/ocr-debug", include_in_schema=False)
+    async def debug_index():
+        return FileResponse(STATIC_DIRECTORY / "index.html")
+
+    @app.get("/{asset_path:path}", include_in_schema=False)
+    async def web_asset(asset_path: str):
+        # Never mount the repository root: .env, .git and local outputs must not
+        # become public when the optional Python server serves the application.
+        if asset_path in WEB_ASSETS:
+            path = WEB_DIRECTORY / asset_path
+        elif asset_path.startswith("vendor/"):
+            path = (WEB_DIRECTORY / asset_path).resolve()
+            vendor = (WEB_DIRECTORY / "vendor").resolve()
+            if not path.is_relative_to(vendor) or any(part.startswith(".") for part in Path(asset_path).parts):
+                return _error("请求的资源不存在。", 404)
+        else:
+            return _error("请求的资源不存在。", 404)
+        return FileResponse(path) if path.is_file() else _error("请求的资源不存在。", 404)
     return app
 
 

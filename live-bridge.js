@@ -2,7 +2,9 @@
 class BookLiveBridge {
   constructor(camera,getCV){
     this.camera=camera;this.getCV=getCV;this.frames=new Set();this.listeners=new Set();this.refs=[];this.number=0;this.lastMedia=-1;this.active=false;this.busy=false;this.revision=0;
-    window.addEventListener('bookreader:captured',e=>this.install(e.detail));
+    window.addEventListener('bookreader:captured',e=>{
+      this.install(e.detail).catch(error=>this.invalidate('reference-error: '+error.message));
+    });
     document.addEventListener('visibilitychange',()=>{if(document.hidden)this.invalidate('background');});
     this.loop=this.loop.bind(this);requestAnimationFrame(this.loop);
   }
@@ -17,7 +19,11 @@ class BookLiveBridge {
     const frame={...this.info(),type:'frame',timestamp:now,mediaTime:v.currentTime,frameNumber:++this.number};this.emit(this.frames,frame);
     if(this.listeners.size&&!this.busy&&now-(this.lastTrack||0)>120){this.lastTrack=now;this.busy=true;try{this.track(frame);}catch(error){this.invalidate('tracking-error: '+error.message);}finally{this.busy=false;}}
   }
-  async install(photo){const revision=++this.revision;this.refs=[];this.invalidate('reference-changing');const bitmap=await createImageBitmap(photo.blob);try{
+  async install(photo){const revision=++this.revision;this.refs=[];this.invalidate('reference-changing');
+    // Manual photos remain usable by OCR even when OpenCV is unavailable.
+    // Without rectified pages there is no tracking reference to construct.
+    if(!photo?.pages?.length || !this.getCV())return;
+    const bitmap=await createImageBitmap(photo.blob);try{
     const canvas=document.createElement('canvas'),scale=Math.min(1,640/Math.max(photo.width,photo.height));canvas.width=Math.round(photo.width*scale);canvas.height=Math.round(photo.height*scale);canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);
     if(revision!==this.revision)return;const cv=this.getCV(),src=cv.imread(canvas),gray=new cv.Mat();try{cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);this.refs=photo.pages.map(p=>({id:p.pageId,captureCount:photo.metadata.captureCount,width:p.width,height:p.height,matrix:p.matrix,points:p.points,gray:new Uint8Array(gray.data),cols:gray.cols,rows:gray.rows,scaleX:gray.cols/photo.width,scaleY:gray.rows/photo.height}));}finally{gray.delete();src.delete();}
   }finally{bitmap.close();}}

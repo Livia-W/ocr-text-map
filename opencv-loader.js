@@ -38,7 +38,7 @@ async function initializeBookCV() {
         // Constructor + allocation tests that WASM really is running, not just downloaded.
         mat=new module.Mat(1,1,module.CV_8UC1);
         if(!mat.data||mat.data.length!==1)throw new Error('WASM 内存尚未就绪');
-        for(const name of ['findContours','getPerspectiveTransform','warpPerspective'])if(typeof module[name]!=='function')throw new Error('缺少接口 '+name);
+        for(const name of ['findContours','getPerspectiveTransform','warpPerspective','goodFeaturesToTrack','calcOpticalFlowPyrLK','findHomography','invert'])if(typeof module[name]!=='function')throw new Error('缺少接口 '+name);
       } catch(error) {fail(error.message);return;}
       finally {mat?.delete();}
       // This pinned build has a legacy .then() resolving to itself. Native Promise
