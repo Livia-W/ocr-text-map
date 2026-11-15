@@ -1,0 +1,230 @@
+{
+  "app_version": "0.3.0",
+  "files": [
+    {
+      "path": ".nojekyll",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "THIRD_PARTY.md",
+      "bytes": 6336,
+      "sha256": "c79e303262e8eafd274168af0d938708433955bc59684d57234ce4dec7186963"
+    },
+    {
+      "path": "app.js",
+      "bytes": 15269,
+      "sha256": "734343fde0b9cc72a68ec743f14d020c99278013d034d9119a878e95c89b37aa"
+    },
+    {
+      "path": "browser-ocr.js",
+      "bytes": 23093,
+      "sha256": "93a03a9ca8857d8551bd876c477966e767d6c5e7aa298c15fa5bc7d31d6a483c"
+    },
+    {
+      "path": "camera.js",
+      "bytes": 3884,
+      "sha256": "c1da81a16a1e1e4c0d50a4ea26120d9d4c54b73e86a0d641ce5d9ab02c356b98"
+    },
+    {
+      "path": "e-app.js",
+      "bytes": 20433,
+      "sha256": "c272fb12cdce3d06ad6da7cedc6ed6b4cda51de08582b92a10887706c175fcdd"
+    },
+    {
+      "path": "gesture-engine.js",
+      "bytes": 65283,
+      "sha256": "3855157c2f27c6bafcb64d5808e9488c6a02b0d852a6a12eed11aa76338a9bdb"
+    },
+    {
+      "path": "index.html",
+      "bytes": 10648,
+      "sha256": "ca8f111086041775604e6e3df354945b0902244fb2255e26b34d9760283536f8"
+    },
+    {
+      "path": "live-bridge.js",
+      "bytes": 7013,
+      "sha256": "a385be7db05ef922a3363fb24f62def099a0dee56bfa2d0c989d146e60921175"
+    },
+    {
+      "path": "opencv-loader.js",
+      "bytes": 4478,
+      "sha256": "8c7dac65394760bd5e790176dda0ab75e51523bad3a45719e15eaedc316cb5ab"
+    },
+    {
+      "path": "page-content.js",
+      "bytes": 6160,
+      "sha256": "1f3491261bf4c4e6a9f525c29cf5239bb096a4d140e834a75f3419787cdde779"
+    },
+    {
+      "path": "page-detector.js",
+      "bytes": 16849,
+      "sha256": "c83a1adfc024c7247e9221a92f22f490b4eb2c26146068c3277da40b9a77c448"
+    },
+    {
+      "path": "page-output.js",
+      "bytes": 1361,
+      "sha256": "a34bc0a39d9c06d35b54f28cfc451601abaf141033f28a58a508dfdb0e14da77"
+    },
+    {
+      "path": "reader-controller.js",
+      "bytes": 26650,
+      "sha256": "2926120989b5d94e7a938f5518a21e19f89717abeedf0881e27d6b945dc4826b"
+    },
+    {
+      "path": "reading_manager.js",
+      "bytes": 19746,
+      "sha256": "448b2aafaae72da180e57ebc36606447daa2f162c8ef8a48bc4fb5b8542cee7a"
+    },
+    {
+      "path": "stability.js",
+      "bytes": 5931,
+      "sha256": "6898e9e63586f922b676dd2e481f43bad014e11262aaf2806b0869dac3fc3668"
+    },
+    {
+      "path": "styles.css",
+      "bytes": 9679,
+      "sha256": "864515d0adbce65724622ae3bfedfb82b8ead585a1d5440f8e9d0d4980782d00"
+    },
+    {
+      "path": "vendor/mediapipe/LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "vendor/mediapipe/PACKAGE-LICENSE.txt",
+      "bytes": 487,
+      "sha256": "b3ac2aaf6d4122b55550103fd5cb1cd42c7b306963f3e0117e908ff49f3b1448"
+    },
+    {
+      "path": "vendor/mediapipe/hand_landmark_full.tflite",
+      "bytes": 5478688,
+      "sha256": "8c026882c9ec059ce0f8e75266bee5a9a23c341a40e0000df755374d3d1b9b68"
+    },
+    {
+      "path": "vendor/mediapipe/hand_landmark_lite.tflite",
+      "bytes": 2071408,
+      "sha256": "d7fde8ac11f8ce03f8663775bfc323f4fc9f2a38062b4f4efa142874ef5b2a48"
+    },
+    {
+      "path": "vendor/mediapipe/hands.binarypb",
+      "bytes": 550,
+      "sha256": "ab76c4215fca99cc2db1b5885cb8398d210e59ebe685245f72e692b4b58421e4"
+    },
+    {
+      "path": "vendor/mediapipe/hands.js",
+      "bytes": 45581,
+      "sha256": "a68b21c9553d614384f7f459622e46e02e3c9cfdf7392915a2fa1d615e338473"
+    },
+    {
+      "path": "vendor/mediapipe/hands_solution_packed_assets.data",
+      "bytes": 4326731,
+      "sha256": "bdce7b66bfc5b39ba86a47775c98e0b186fe73f8308c2279f852af4c89ffdf42"
+    },
+    {
+      "path": "vendor/mediapipe/hands_solution_packed_assets_loader.js",
+      "bytes": 8327,
+      "sha256": "d05c073a62a0c8d2d21c18bc8f158424ece0078ea00a636e9527083b10ca1e17"
+    },
+    {
+      "path": "vendor/mediapipe/hands_solution_simd_wasm_bin.data",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vendor/mediapipe/hands_solution_simd_wasm_bin.js",
+      "bytes": 276479,
+      "sha256": "7720172e0775636e64955fb1091958c8294e01aa100c3272b59b2a543c028cb5"
+    },
+    {
+      "path": "vendor/mediapipe/hands_solution_simd_wasm_bin.wasm",
+      "bytes": 6026259,
+      "sha256": "78ef7eb86ebc6424ac06b13f89b9a1fc01ff35e07520e37de98887cf88c06653"
+    },
+    {
+      "path": "vendor/mediapipe/hands_solution_wasm_bin.js",
+      "bytes": 276474,
+      "sha256": "2e1faa9965a87f496316e85731c41bde1d9b07dd448f6cd30f5c2262bcd35e29"
+    },
+    {
+      "path": "vendor/mediapipe/hands_solution_wasm_bin.wasm",
+      "bytes": 5917209,
+      "sha256": "4e70eaf8063e0e9ac10e682d9d6b55c08d0788f0a8d49925e2e484636526e157"
+    },
+    {
+      "path": "vendor/opencv/LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "vendor/opencv/opencv.js",
+      "bytes": 11386540,
+      "sha256": "5ad229d2666fce6803a3af4a569121bd6da8d09d5c164dbafb0d7f758460c25e"
+    },
+    {
+      "path": "vendor/tesseract/LICENSE",
+      "bytes": 11357,
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+    },
+    {
+      "path": "vendor/tesseract/core/LICENSE",
+      "bytes": 11358,
+      "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+    },
+    {
+      "path": "vendor/tesseract/core/tesseract-core-lstm.wasm",
+      "bytes": 2871085,
+      "sha256": "220e2e87551edccb85519796a170469f8ab2a8055216789e3b8b1ada18b7bc2b"
+    },
+    {
+      "path": "vendor/tesseract/core/tesseract-core-lstm.wasm.js",
+      "bytes": 3954181,
+      "sha256": "775a35df6f2ae100e02609443e6bd5cafcd07983dd6175454ca4a432a7730687"
+    },
+    {
+      "path": "vendor/tesseract/core/tesseract-core-simd-lstm.wasm",
+      "bytes": 2871377,
+      "sha256": "187d76742dfc0d8929f0b49a619f145bb6370730776c7bd0d3e20c6b2098808d"
+    },
+    {
+      "path": "vendor/tesseract/core/tesseract-core-simd-lstm.wasm.js",
+      "bytes": 3954569,
+      "sha256": "9d7c43fb206dc9f48475228b46bf35f888fa9e6259da2e67d5a75c77049f2dc7"
+    },
+    {
+      "path": "vendor/tesseract/lang/LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "vendor/tesseract/lang/chi_sim.traineddata",
+      "bytes": 2469156,
+      "sha256": "a5fcb6f0db1e1d6d8522f39db4e848f05984669172e584e8d76b6b3141e1f730"
+    },
+    {
+      "path": "vendor/tesseract/lang/eng.traineddata",
+      "bytes": 4113088,
+      "sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
+    },
+    {
+      "path": "vendor/tesseract/tesseract.min.js",
+      "bytes": 62961,
+      "sha256": "10fff78484067759c43028a02a72d76d0b90eb17302bb23b58a9ec5410bc928b"
+    },
+    {
+      "path": "vendor/tesseract/tesseract.min.js.LICENSE.txt",
+      "bytes": 149,
+      "sha256": "cdf963ced7d25a0f98901a547647b4d6e2dbe0197fd78c87a059a87b0e542fe2"
+    },
+    {
+      "path": "vendor/tesseract/worker.min.js",
+      "bytes": 111162,
+      "sha256": "38645599043239c0eb6db08a6504a92dcdc292200535f3e9339cd77c4443b842"
+    },
+    {
+      "path": "vendor/tesseract/worker.min.js.LICENSE.txt",
+      "bytes": 466,
+      "sha256": "45f54171aeaa1d10c0c1a66f374b7bba1f02472b1487fbe892eec04f840002ac"
+    }
+  ]
+}

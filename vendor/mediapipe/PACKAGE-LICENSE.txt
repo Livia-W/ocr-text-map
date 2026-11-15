@@ -1,0 +1,9 @@
+Package: @mediapipe/hands
+Version: 0.4.1675469240
+Declared license: Apache-2.0
+Source: https://registry.npmjs.org/@mediapipe/hands/0.4.1675469240
+The published npm archive contains no standalone LICENSE file.
+LICENSE contains the standard Apache License 2.0 text, copied verbatim from
+the verified @techstark/opencv-js@4.11.0-release.1 package LICENSE.
+This copy supplies the standard license text; package copyright notices
+remain in the original MediaPipe distribution files.
