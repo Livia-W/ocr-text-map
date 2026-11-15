@@ -1,0 +1,3167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080e0c">
+  <title>纸书 OCR 地图 · 词级手势测试</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel-height: 112px;
+      --dock-width: 304px;
+      --mint: #89f0bd;
+      --amber: #ffc861;
+      --red: #ff8d7b;
+      --blue: #8dcaff;
+      --line: rgba(222, 237, 228, 0.14);
+      --surface: rgba(7, 15, 12, 0.9);
+      --muted: #91a198;
+      --text: #eef6f1;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #080e0c;
+    }
+
+    body {
+      color: var(--text);
+      font-family: "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button:focus-visible,
+    input:focus-visible {
+      outline: 2px solid var(--mint);
+      outline-offset: 2px;
+    }
+
+    .app {
+      position: fixed;
+      inset: 0;
+      isolation: isolate;
+      background:
+        radial-gradient(circle at 45% 25%, rgba(61, 105, 82, 0.22), transparent 40%),
+        #080e0c;
+    }
+
+    #camera {
+      position: absolute;
+      inset: 0;
+      z-index: -3;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background:
+        radial-gradient(circle at 50% 32%, rgba(62, 91, 73, 0.34), transparent 46%),
+        #09100d;
+      transition: filter 180ms ease;
+    }
+
+    #camera.mirrored {
+      transform: scaleX(-1);
+    }
+
+    body.demo-mode #camera,
+    body[data-state="paused"] #camera {
+      filter: brightness(0.38) saturate(0.6);
+    }
+
+    .vignette {
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      pointer-events: none;
+      background:
+        linear-gradient(180deg, rgba(2, 7, 5, 0.84), transparent 20%, transparent 72%, rgba(2, 7, 5, 0.84)),
+        radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.38));
+    }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 7;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    body.demo-mode #overlay {
+      pointer-events: auto;
+      cursor: crosshair;
+    }
+
+    .topbar {
+      position: absolute;
+      top: max(12px, env(safe-area-inset-top));
+      left: 14px;
+      right: 14px;
+      z-index: 12;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .brand,
+    .top-actions,
+    .status-strip {
+      pointer-events: auto;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 11px 7px 8px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(7, 15, 12, 0.78);
+      backdrop-filter: blur(16px) saturate(1.15);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      place-items: center;
+      border-radius: 9px;
+      color: #0b1c12;
+      background: var(--mint);
+      box-shadow: 0 0 24px rgba(137, 240, 189, 0.3);
+    }
+
+    .brand-mark svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .brand strong,
+    .brand span {
+      display: block;
+    }
+
+    .brand strong {
+      margin-bottom: 2px;
+      font-size: 12px;
+      letter-spacing: 0.025em;
+    }
+
+    .brand span {
+      color: var(--muted);
+      font-size: 8px;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+
+    .status-strip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .chip {
+      display: inline-flex;
+      min-height: 32px;
+      align-items: center;
+      gap: 7px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: #b6c4bc;
+      background: rgba(7, 15, 12, 0.76);
+      backdrop-filter: blur(14px);
+      font-size: 9px;
+      white-space: nowrap;
+    }
+
+    .chip-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #69766f;
+    }
+
+    .chip.online .chip-dot {
+      background: var(--mint);
+      box-shadow: 0 0 12px rgba(137, 240, 189, 0.58);
+    }
+
+    .upload-button,
+    .icon-button {
+      display: inline-flex;
+      min-height: 34px;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: #c3d0c8;
+      background: rgba(7, 15, 12, 0.8);
+      cursor: pointer;
+      backdrop-filter: blur(14px);
+      transition: 150ms ease;
+    }
+
+    .upload-button {
+      padding: 0 11px;
+      color: #0b1b13;
+      border-color: var(--mint);
+      background: var(--mint);
+      font-size: 10px;
+      font-weight: 750;
+    }
+
+    .icon-button {
+      width: 34px;
+      padding: 0;
+      color: #aab8b0;
+    }
+
+    .icon-button:hover,
+    .upload-button:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.06);
+    }
+
+    .icon-button.active {
+      color: var(--mint);
+      border-color: rgba(137, 240, 189, 0.36);
+      background: rgba(43, 104, 74, 0.3);
+    }
+
+    .icon-button svg,
+    .upload-button svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    .reading-area {
+      position: absolute;
+      top: max(62px, calc(env(safe-area-inset-top) + 48px));
+      left: 14px;
+      right: calc(var(--dock-width) + 28px);
+      bottom: calc(var(--panel-height) + 18px);
+      z-index: 2;
+      border: 1px solid rgba(225, 239, 230, 0.16);
+      border-radius: 14px;
+      background: transparent;
+      overflow: hidden;
+    }
+
+    .reading-area::before {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 22px;
+      content: "";
+      pointer-events: none;
+      background: linear-gradient(180deg, rgba(4, 10, 7, 0.42), transparent);
+    }
+
+    .map-viewport {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .map-layer {
+      position: absolute;
+      transform-origin: top left;
+    }
+
+    .ocr-line {
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .ocr-word {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: visible;
+      border-radius: 3px;
+      color: #faf8ef;
+      font-family: "Noto Serif CJK SC", "Songti SC", "STSong", serif;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+      text-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.98),
+        0 0 7px rgba(0, 0, 0, 0.8);
+      transition: color 70ms linear, background 70ms linear, box-shadow 70ms linear;
+    }
+
+    body.show-boxes .ocr-word {
+      outline: 1px solid rgba(137, 240, 189, 0.42);
+      outline-offset: 0;
+    }
+
+    .ocr-word.hovered {
+      color: #effff7;
+      background: rgba(47, 164, 106, 0.48);
+      box-shadow:
+        0 0 0 1px rgba(137, 240, 189, 0.9),
+        0 0 16px rgba(62, 219, 143, 0.38);
+    }
+
+    .ocr-word.active {
+      color: #201705;
+      background: var(--amber);
+      text-shadow: none;
+      box-shadow:
+        0 0 0 2px rgba(255, 200, 97, 0.56),
+        0 4px 18px rgba(230, 152, 34, 0.3);
+    }
+
+    .ocr-word.trail {
+      color: #f6fff9;
+      background: rgba(50, 181, 117, 0.36);
+      box-shadow: 0 0 0 1px rgba(137, 240, 189, 0.44);
+    }
+
+    .empty-map {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: rgba(224, 237, 229, 0.72);
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .empty-map.hidden {
+      display: none;
+    }
+
+    .empty-map-card {
+      max-width: 420px;
+      padding: 22px;
+      border: 1px dashed rgba(223, 239, 229, 0.24);
+      border-radius: 18px;
+      background: rgba(7, 15, 12, 0.4);
+      backdrop-filter: blur(10px);
+    }
+
+    .empty-map strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #f0f7f2;
+      font-size: 15px;
+    }
+
+    .empty-map span {
+      display: block;
+      font-size: 10px;
+      line-height: 1.65;
+    }
+
+    .source-meta {
+      position: absolute;
+      top: 8px;
+      left: 10px;
+      z-index: 4;
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: #a4b4ab;
+      background: rgba(6, 13, 10, 0.62);
+      backdrop-filter: blur(10px);
+      font-size: 8px;
+      pointer-events: none;
+    }
+
+    .d-dock {
+      position: absolute;
+      top: max(62px, calc(env(safe-area-inset-top) + 48px));
+      right: 14px;
+      bottom: calc(var(--panel-height) + 18px);
+      z-index: 10;
+      display: flex;
+      width: var(--dock-width);
+      flex-direction: column;
+      border: 1px solid rgba(225, 239, 230, 0.16);
+      border-radius: 14px;
+      background: rgba(7, 15, 12, 0.88);
+      backdrop-filter: blur(20px) saturate(1.15);
+      overflow: hidden;
+    }
+
+    .dock-header {
+      display: flex;
+      min-height: 40px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 11px;
+      border-bottom: 1px solid rgba(225, 239, 230, 0.1);
+    }
+
+    .dock-title {
+      color: #edf6f0;
+      font-size: 10px;
+      font-weight: 720;
+      letter-spacing: 0.04em;
+    }
+
+    .dock-subtitle {
+      color: #73847a;
+      font-size: 7px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .dock-meta {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 28px;
+      padding: 0 11px;
+      border-bottom: 1px solid rgba(225, 239, 230, 0.08);
+      color: #788a80;
+      font-size: 8px;
+    }
+
+    .dock-meta strong {
+      color: var(--mint);
+      font-weight: 650;
+    }
+
+    .d-log {
+      min-height: 0;
+      margin: 0;
+      padding: 6px 8px 10px;
+      list-style: none;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(225, 239, 230, 0.18) transparent;
+    }
+
+    .d-empty {
+      display: grid;
+      min-height: 110px;
+      place-items: center;
+      color: #6e7e75;
+      font-size: 9px;
+      text-align: center;
+    }
+
+    .d-entry {
+      display: grid;
+      grid-template-columns: 45px minmax(0, 1fr);
+      gap: 7px;
+      padding: 7px 5px;
+      border-bottom: 1px solid rgba(225, 239, 230, 0.06);
+      font-family: "Cascadia Mono", "Consolas", monospace;
+    }
+
+    .d-entry time {
+      color: #67786e;
+      font-size: 7px;
+    }
+
+    .d-entry-copy {
+      min-width: 0;
+    }
+
+    .d-entry-copy strong,
+    .d-entry-copy span {
+      display: block;
+      overflow-wrap: anywhere;
+    }
+
+    .d-entry-copy strong {
+      margin-bottom: 2px;
+      color: #b8c7bf;
+      font-size: 8px;
+      font-weight: 650;
+    }
+
+    .d-entry-copy span {
+      color: #eef8f2;
+      font-size: 9px;
+      line-height: 1.45;
+    }
+
+    .d-entry.focus .d-entry-copy strong {
+      color: var(--mint);
+    }
+
+    .d-entry.missed_line .d-entry-copy strong {
+      color: var(--red);
+    }
+
+    .d-entry.skip_line .d-entry-copy strong {
+      color: var(--amber);
+    }
+
+    .console-panel {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: max(8px, env(safe-area-inset-bottom));
+      z-index: 11;
+      display: flex;
+      height: var(--panel-height);
+      flex-direction: column;
+      border: 1px solid rgba(225, 239, 230, 0.16);
+      border-radius: 15px;
+      background:
+        linear-gradient(110deg, rgba(137, 240, 189, 0.1), transparent 24%, transparent 76%, rgba(255, 200, 97, 0.08)),
+        rgba(6, 13, 10, 0.92);
+      box-shadow: 0 22px 58px rgba(0, 0, 0, 0.46);
+      backdrop-filter: blur(24px) saturate(1.16);
+      overflow: hidden;
+    }
+
+    .console-header {
+      display: flex;
+      min-height: 22px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      border-bottom: 1px solid rgba(225, 239, 230, 0.08);
+      color: #76877d;
+      font-size: 8px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .console-header strong {
+      color: var(--mint);
+    }
+
+    .console-grid {
+      display: grid;
+      min-height: 0;
+      flex: 1;
+      grid-template-columns: minmax(155px, 0.66fr) minmax(310px, 1.55fr) minmax(220px, 0.95fr);
+    }
+
+    .console-section {
+      min-width: 0;
+      padding: 6px 11px 7px;
+      border-right: 1px solid rgba(225, 239, 230, 0.08);
+      overflow: hidden;
+    }
+
+    .console-section:last-child {
+      border-right: 0;
+    }
+
+    .section-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      color: #7d8e84;
+      font-size: 8px;
+      letter-spacing: 0.07em;
+    }
+
+    .state-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .state-dot {
+      width: 22px;
+      height: 22px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(141, 202, 255, 0.26);
+      border-radius: 7px;
+      background:
+        radial-gradient(circle, currentColor 0 18%, transparent 20%),
+        rgba(141, 202, 255, 0.08);
+      color: var(--blue);
+    }
+
+    body[data-state="pointing"] .state-dot {
+      color: var(--mint);
+      border-color: rgba(137, 240, 189, 0.3);
+    }
+
+    body[data-state="switching_line"] .state-dot,
+    body[data-state="takeover"] .state-dot,
+    body[data-state="selecting"] .state-dot {
+      color: var(--amber);
+      border-color: rgba(255, 200, 97, 0.32);
+    }
+
+    body[data-state="paused"] .state-dot {
+      color: var(--red);
+      border-color: rgba(255, 141, 123, 0.34);
+    }
+
+    .state-name {
+      color: #f2f7f4;
+      font-size: 14px;
+      font-weight: 740;
+    }
+
+    .state-sub {
+      margin-top: 2px;
+      color: #6d7d74;
+      font-size: 7px;
+      letter-spacing: 0.1em;
+    }
+
+    .state-hint {
+      margin-top: 3px;
+      overflow: hidden;
+      color: #aebcb4;
+      font-size: 8px;
+      line-height: 1.3;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .reading-section {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .word-display {
+      display: flex;
+      min-height: 27px;
+      align-items: baseline;
+      gap: 9px;
+      overflow: hidden;
+    }
+
+    #wordText {
+      color: #fff5dd;
+      font-family: "Noto Serif CJK SC", "Songti SC", serif;
+      font-size: clamp(17px, 1.8vw, 25px);
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    #wordMeta {
+      overflow: hidden;
+      color: #86978d;
+      font-size: 8px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #wordContext {
+      min-height: 12px;
+      margin-top: 1px;
+      overflow: hidden;
+      color: #b8c6be;
+      font-size: 8px;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .reading-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: auto;
+      padding-top: 3px;
+      border-top: 1px solid rgba(225, 239, 230, 0.08);
+      color: #7f9187;
+      font-size: 8px;
+    }
+
+    .history-list {
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      overflow-y: auto;
+    }
+
+    .history-empty {
+      display: grid;
+      min-height: 50px;
+      place-items: center;
+      color: #6a7a70;
+      font-size: 8px;
+      text-align: center;
+    }
+
+    .history-item {
+      display: grid;
+      grid-template-columns: 31px minmax(0, 1fr);
+      gap: 5px;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(225, 239, 230, 0.05);
+      font-size: 7px;
+    }
+
+    .history-item time {
+      color: #68786f;
+      font-family: "Cascadia Mono", Consolas, monospace;
+    }
+
+    .history-copy {
+      overflow: hidden;
+      color: #a9b8af;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .toast-stack {
+      position: absolute;
+      top: 66px;
+      left: calc((100% - var(--dock-width) - 28px) / 2);
+      z-index: 15;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+
+    .toast {
+      padding: 8px 13px;
+      border: 1px solid rgba(225, 239, 230, 0.2);
+      border-radius: 999px;
+      color: #eef6f1;
+      background: rgba(7, 15, 12, 0.94);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32);
+      backdrop-filter: blur(18px);
+      font-size: 9px;
+      animation: toast-in 180ms ease-out;
+    }
+
+    .toast.warn {
+      border-color: rgba(255, 200, 97, 0.4);
+    }
+
+    .toast.error {
+      border-color: rgba(255, 141, 123, 0.42);
+    }
+
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .boot-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background:
+        radial-gradient(circle at 50% 18%, rgba(50, 111, 80, 0.28), transparent 38%),
+        linear-gradient(155deg, rgba(4, 10, 7, 0.97), rgba(8, 16, 12, 0.95));
+      backdrop-filter: blur(12px);
+      transition: opacity 240ms ease, visibility 240ms ease;
+    }
+
+    .boot-overlay.hidden {
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .boot-card {
+      width: min(800px, 100%);
+      padding: clamp(24px, 4vw, 42px);
+      border: 1px solid rgba(225, 239, 230, 0.16);
+      border-radius: 26px;
+      background:
+        linear-gradient(135deg, rgba(137, 240, 189, 0.08), transparent 38%),
+        rgba(9, 19, 14, 0.9);
+      box-shadow: 0 42px 120px rgba(0, 0, 0, 0.54);
+    }
+
+    .boot-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 17px;
+      padding: 6px 9px;
+      border: 1px solid rgba(137, 240, 189, 0.22);
+      border-radius: 999px;
+      color: var(--mint);
+      background: rgba(137, 240, 189, 0.07);
+      font-size: 8px;
+      font-weight: 750;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .boot-kicker::before {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      content: "";
+      background: currentColor;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .boot-card h1 {
+      margin: 0;
+      font-size: clamp(30px, 4.7vw, 54px);
+      font-weight: 780;
+      letter-spacing: -0.045em;
+      line-height: 1.08;
+    }
+
+    .boot-card h1 em {
+      color: var(--mint);
+      font-style: normal;
+    }
+
+    .boot-lead {
+      margin: 15px 0 19px;
+      color: #b4c2b9;
+      font-size: 12px;
+      line-height: 1.72;
+    }
+
+    .flow-cards {
+      display: grid;
+      margin-bottom: 20px;
+      border-top: 1px solid rgba(225, 239, 230, 0.11);
+      border-bottom: 1px solid rgba(225, 239, 230, 0.11);
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .flow-card {
+      padding: 13px 13px 13px 0;
+      border-right: 1px solid rgba(225, 239, 230, 0.08);
+    }
+
+    .flow-card + .flow-card {
+      padding-left: 13px;
+    }
+
+    .flow-card:last-child {
+      border-right: 0;
+    }
+
+    .flow-card b {
+      display: block;
+      margin-bottom: 4px;
+      color: #eff6f1;
+      font-size: 10px;
+    }
+
+    .flow-card span {
+      display: block;
+      color: #86978d;
+      font-size: 8px;
+      line-height: 1.55;
+    }
+
+    .boot-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .primary-button,
+    .secondary-button {
+      display: inline-flex;
+      min-height: 40px;
+      align-items: center;
+      gap: 7px;
+      padding: 0 14px;
+      border-radius: 11px;
+      cursor: pointer;
+    }
+
+    .primary-button {
+      border: 1px solid var(--mint);
+      color: #07130d;
+      background: var(--mint);
+      font-size: 11px;
+      font-weight: 750;
+      box-shadow: 0 12px 34px rgba(137, 240, 189, 0.18);
+    }
+
+    .secondary-button {
+      border: 1px solid rgba(225, 239, 230, 0.18);
+      color: #b7c4bc;
+      background: rgba(225, 239, 230, 0.045);
+      font-size: 10px;
+    }
+
+    .primary-button:disabled {
+      cursor: wait;
+      opacity: 0.6;
+    }
+
+    .primary-button svg,
+    .secondary-button svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    .boot-note {
+      margin-top: 11px;
+      color: #6e7f75;
+      font-size: 8px;
+      line-height: 1.55;
+    }
+
+    .boot-status {
+      min-height: 15px;
+      margin-top: 8px;
+      color: var(--amber);
+      font-size: 9px;
+    }
+
+    .demo-tip {
+      position: absolute;
+      right: calc(var(--dock-width) + 26px);
+      bottom: calc(var(--panel-height) + 28px);
+      z-index: 8;
+      display: none;
+      max-width: 270px;
+      padding: 8px 10px;
+      border: 1px solid rgba(255, 200, 97, 0.25);
+      border-radius: 9px;
+      color: #b8c6bd;
+      background: rgba(7, 15, 12, 0.88);
+      backdrop-filter: blur(14px);
+      font-size: 8px;
+      line-height: 1.5;
+      pointer-events: none;
+    }
+
+    body.demo-mode .demo-tip {
+      display: block;
+    }
+
+    .file-name {
+      max-width: 190px;
+      overflow: hidden;
+      color: #a8b8af;
+      font-size: 8px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 900px) {
+      :root {
+        --dock-width: 248px;
+        --panel-height: 120px;
+      }
+
+      .status-strip .chip:nth-child(n + 3) {
+        display: none;
+      }
+
+      .console-grid {
+        grid-template-columns: minmax(130px, 0.62fr) minmax(250px, 1.5fr);
+      }
+
+      .history-section {
+        display: none;
+      }
+    }
+
+    @media (max-width: 680px) {
+      :root {
+        --dock-width: 100%;
+        --panel-height: 158px;
+      }
+
+      .brand span,
+      .status-strip {
+        display: none;
+      }
+
+      .upload-button span {
+        display: none;
+      }
+
+      .upload-button {
+        width: 34px;
+        padding: 0;
+      }
+
+      .reading-area {
+        right: 10px;
+        left: 10px;
+        bottom: calc(var(--panel-height) + 142px);
+      }
+
+      .d-dock {
+        top: auto;
+        right: 10px;
+        bottom: calc(var(--panel-height) + 8px);
+        left: 10px;
+        width: auto;
+        height: 126px;
+      }
+
+      .d-dock .dock-subtitle {
+        display: none;
+      }
+
+      .console-panel {
+        left: 8px;
+        right: 8px;
+      }
+
+      .console-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .state-section,
+      .history-section {
+        display: none;
+      }
+
+      .demo-tip {
+        display: none !important;
+      }
+
+      .flow-cards {
+        grid-template-columns: 1fr;
+      }
+
+      .flow-card {
+        padding: 9px 0;
+        border-right: 0;
+        border-bottom: 1px solid rgba(225, 239, 230, 0.07);
+      }
+
+      .flow-card + .flow-card {
+        padding-left: 0;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body data-state="idle">
+  <main class="app">
+    <video id="camera" muted playsinline aria-hidden="true"></video>
+    <div class="vignette" aria-hidden="true"></div>
+
+    <section class="reading-area" aria-label="OCR 文字地图测试区">
+      <div id="sourceMeta" class="source-meta">未加载文字地图</div>
+      <div id="mapViewport" class="map-viewport">
+        <div id="mapLayer" class="map-layer"></div>
+        <div id="emptyMap" class="empty-map">
+          <div class="empty-map-card">
+            <strong>尚未加载文字数据</strong>
+            <span>请上传包含 lines 数组的 OCR JSON。每行需要 id、text 与 bbox_rectified：[x, y, w, h]。</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <canvas id="overlay" aria-hidden="true"></canvas>
+
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 5h6v14H5zM13 5h6v14h-6z"></path>
+            <path d="M7 8h2M7 11h2M7 14h2M15 8h2M15 11h2M15 14h2"></path>
+          </svg>
+        </div>
+        <div>
+          <strong>纸书 OCR 地图 · 手势测试</strong>
+          <span>JSON → Rectified BBox → Word Focus</span>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <div class="status-strip">
+          <div id="cameraChip" class="chip">
+            <i class="chip-dot" aria-hidden="true"></i>
+            <span id="cameraChipText">摄像头未启动</span>
+          </div>
+          <div class="chip"><span id="fpsText">0 FPS</span></div>
+          <div class="chip"><span id="handCountText">手：0</span></div>
+          <div class="chip"><span id="mapCountText">0 行 / 0 词</span></div>
+        </div>
+        <button id="uploadTopButton" class="upload-button" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 16V4M7.5 8.5 12 4l4.5 4.5"></path>
+            <path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"></path>
+          </svg>
+          <span>上传文字地图 JSON</span>
+        </button>
+        <button id="soundButton" class="icon-button active" type="button" aria-label="关闭音效" title="音效开关">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M11 5 6.5 9H3v6h3.5l4.5 4V5Z"></path>
+            <path d="M15 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12"></path>
+          </svg>
+        </button>
+        <button id="boxButton" class="icon-button" type="button" aria-label="显示文字框" title="显示文字框">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="8" height="6" rx="1"></rect>
+            <rect x="13" y="4" width="8" height="6" rx="1"></rect>
+            <rect x="3" y="14" width="8" height="6" rx="1"></rect>
+            <rect x="13" y="14" width="8" height="6" rx="1"></rect>
+          </svg>
+        </button>
+        <button id="pauseButton" class="icon-button" type="button" aria-label="模拟暂停" title="模拟暂停">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <path d="M8.5 5v14M15.5 5v14"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <aside class="d-dock" aria-label="D模块实时输出日志">
+      <div class="dock-header">
+        <div>
+          <div class="dock-title">D模块实时输出日志</div>
+          <div class="dock-subtitle">window.onWordFocus</div>
+        </div>
+        <span id="dEventCount" class="chip">0</span>
+      </div>
+      <div class="dock-meta">
+        <strong id="dStatus">等待上传文字地图</strong>
+        <span id="fileName" class="file-name"></span>
+      </div>
+      <ol id="dLogList" class="d-log" aria-live="polite">
+        <li class="d-empty">加载 JSON 并开始手势测试后，<br>这里会显示标准字词焦点事件。</li>
+      </ol>
+    </aside>
+
+    <div id="toastStack" class="toast-stack" aria-live="polite"></div>
+
+    <aside class="console-panel" aria-label="手势测试控制台">
+      <div class="console-header">
+        <span><strong>Gesture test console</strong> · 真实 JSON 坐标</span>
+        <span id="panelMeta">等待文字地图</span>
+      </div>
+      <div class="console-grid">
+        <section class="console-section state-section">
+          <div class="section-label">
+            <span>当前状态</span>
+            <span id="stateCode">IDLE</span>
+          </div>
+          <div class="state-row">
+            <i class="state-dot" aria-hidden="true"></i>
+            <div>
+              <div id="stateName" class="state-name">待机</div>
+              <div id="stateSub" class="state-sub">SYSTEM READY</div>
+            </div>
+          </div>
+          <div id="stateHint" class="state-hint">请先上传文字地图 JSON。</div>
+        </section>
+
+        <section class="console-section reading-section">
+          <div class="section-label">
+            <span>当前触发字词</span>
+            <span id="linePill" class="chip">无活动行</span>
+          </div>
+          <div class="word-display">
+            <span id="wordText" aria-live="polite">等待真实文字数据</span>
+            <span id="wordMeta">—</span>
+          </div>
+          <div id="wordContext">没有内置测试文本；内容只来自上传的 JSON。</div>
+          <div class="reading-footer">
+            <strong id="readState">上次词焦点：—</strong>
+          </div>
+        </section>
+
+        <section class="console-section history-section">
+          <div class="section-label">
+            <span>手势事件记录</span>
+            <span id="historyCount">0</span>
+          </div>
+          <ol id="historyList" class="history-list">
+            <li class="history-empty">尚无手势事件</li>
+          </ol>
+        </section>
+      </div>
+    </aside>
+
+    <div class="demo-tip">鼠标演示：移动模拟食指；按住 Shift 拖拽模拟双手框选。点击暂停按钮可测试恢复。</div>
+
+    <section id="bootOverlay" class="boot-overlay" aria-labelledby="bootTitle">
+      <div class="boot-card">
+        <div class="boot-kicker">OCR map bridge · Data-driven test</div>
+        <h1 id="bootTitle">让真实 OCR，<em>接上指尖</em>。</h1>
+        <p class="boot-lead">
+          页面不包含任何内置正文或坐标。上传包含 lines 数组的 JSON 后，系统会按每行 bbox_rectified 和 text 长度动态生成字词区域，并把手势事件发送给全局 D 模块接口。
+        </p>
+        <div class="flow-cards">
+          <div class="flow-card">
+            <b>01 · 上传 JSON</b>
+            <span>读取 lines[].id、text、bbox_rectified，不使用假数据。</span>
+          </div>
+          <div class="flow-card">
+            <b>02 · 动态拆词</b>
+            <span>按 text 字符数均分行宽，生成连续字词坐标。</span>
+          </div>
+          <div class="flow-card">
+            <b>03 · D 模块输出</b>
+            <span>window.onWordFocus 接收 focus、missed_line 与 skip_line。</span>
+          </div>
+        </div>
+        <div class="boot-actions">
+          <button id="uploadBootButton" class="primary-button" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 16V4M7.5 8.5 12 4l4.5 4.5"></path>
+              <path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"></path>
+            </svg>
+            上传文字地图 JSON
+          </button>
+          <button id="startButton" class="secondary-button" type="button">启动摄像头</button>
+          <button id="demoButton" class="secondary-button" type="button">鼠标演示</button>
+        </div>
+        <div class="boot-note">JSON 来源约定：顶部对象包含 lines；每行包含 id、text 和 bbox_rectified。页面不会自动补造任何文字。</div>
+        <div id="bootStatus" class="boot-status" role="status"></div>
+      </div>
+    </section>
+
+    <input id="jsonFileInput" class="sr-only" type="file" accept=".json,application/json">
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+  <script>
+    "use strict";
+
+    const LINE_SWITCH_DEBOUNCE_MS = 250;
+    const FINGER_KEYS = ["thumb", "index", "middle", "ring", "pinky"];
+    const POSTURE_FILTER_TTL = 650;
+    const TWO_HAND_CONFIRM_MS = LINE_SWITCH_DEBOUNCE_MS;
+    const TWO_HAND_HOLD_MS = 420;
+    const AUDIO_LINE_END_FREQ = 1120;
+
+    const video = document.getElementById("camera");
+    const canvas = document.getElementById("overlay");
+    const ctx = canvas.getContext("2d");
+    const mapViewport = document.getElementById("mapViewport");
+    const mapLayer = document.getElementById("mapLayer");
+    const emptyMap = document.getElementById("emptyMap");
+    const sourceMeta = document.getElementById("sourceMeta");
+    const jsonFileInput = document.getElementById("jsonFileInput");
+    const uploadTopButton = document.getElementById("uploadTopButton");
+    const uploadBootButton = document.getElementById("uploadBootButton");
+    const startButton = document.getElementById("startButton");
+    const demoButton = document.getElementById("demoButton");
+    const bootOverlay = document.getElementById("bootOverlay");
+    const bootStatus = document.getElementById("bootStatus");
+    const cameraChip = document.getElementById("cameraChip");
+    const cameraChipText = document.getElementById("cameraChipText");
+    const fpsText = document.getElementById("fpsText");
+    const handCountText = document.getElementById("handCountText");
+    const mapCountText = document.getElementById("mapCountText");
+    const soundButton = document.getElementById("soundButton");
+    const boxButton = document.getElementById("boxButton");
+    const pauseButton = document.getElementById("pauseButton");
+    const stateName = document.getElementById("stateName");
+    const stateCode = document.getElementById("stateCode");
+    const stateSub = document.getElementById("stateSub");
+    const stateHint = document.getElementById("stateHint");
+    const panelMeta = document.getElementById("panelMeta");
+    const linePill = document.getElementById("linePill");
+    const wordText = document.getElementById("wordText");
+    const wordMeta = document.getElementById("wordMeta");
+    const wordContext = document.getElementById("wordContext");
+    const readState = document.getElementById("readState");
+    const historyList = document.getElementById("historyList");
+    const historyCount = document.getElementById("historyCount");
+    const dLogList = document.getElementById("dLogList");
+    const dEventCount = document.getElementById("dEventCount");
+    const dStatus = document.getElementById("dStatus");
+    const fileName = document.getElementById("fileName");
+    const toastStack = document.getElementById("toastStack");
+
+    const STATE_META = {
+      idle: { label: "待机", code: "IDLE", sub: "SYSTEM READY" },
+      pointing: { label: "词级点读", code: "WORD TRACK", sub: "JSON BBOX" },
+      switching_line: { label: "换行中", code: "LINE SWITCH", sub: "DYNAMIC BUFFER" },
+      takeover: { label: "漏读接管", code: "TAKEOVER", sub: "X AXIS ONLY" },
+      selecting: { label: "框选中", code: "SELECTION", sub: "TWO HANDS" },
+      paused: { label: "已暂停", code: "PAUSED", sub: "INPUT LOCKED" }
+    };
+
+    const PAUSE_REASONS = {
+      five: "五指张开已保持 500ms",
+      noHand: "连续 1 秒未检测到手",
+      occlusion: "中心画面亮度骤降或被遮挡",
+      manual: "手动模拟暂停"
+    };
+
+    const HAND_CONNECTIONS = [
+      [0, 1], [1, 2], [2, 3], [3, 4],
+      [0, 5], [5, 6], [6, 7], [7, 8],
+      [5, 9], [9, 10], [10, 11], [11, 12],
+      [9, 13], [13, 14], [14, 15], [15, 16],
+      [13, 17], [17, 18], [18, 19], [19, 20],
+      [0, 17]
+    ];
+
+    let audioCtx = null;
+    let soundEnabled = true;
+    let sessionActive = false;
+    let sessionMode = "inactive";
+    let state = "idle";
+    let pauseReason = "";
+    let stream = null;
+    let handsModel = null;
+    let trackingReady = false;
+    let detectBusy = false;
+    let detectionLoopStarted = false;
+    let smoothedFps = 0;
+    let isMirrored = true;
+
+    let mapLoaded = false;
+    let sourceWidth = 0;
+    let sourceHeight = 0;
+    let displayScale = 1;
+    let displayOffsetX = 0;
+    let displayOffsetY = 0;
+    let lineMap = [];
+    let lineById = new Map();
+    let wordMap = [];
+
+    let activeLineId = null;
+    let activeWord = null;
+    let hoverWord = null;
+    let hoveredElement = null;
+    let activeElement = null;
+    let lineCandidate = null;
+    let forcedLineId = null;
+    let takeoverOriginY = null;
+    let takeoverRearmRequired = false;
+    let lineEndSignaledLineId = null;
+    let pointerTrace = {
+      x: 0,
+      y: 0,
+      at: 0,
+      velocityX: 0,
+      velocityY: 0,
+      speed: 0,
+      lineId: null,
+      wordIndex: null
+    };
+    let lastPointerSeenAt = 0;
+
+    let currentHands = [];
+    let lastRenderedHands = [];
+    let motionHistories = new Map();
+    let postureFilters = new Map();
+    let pointerKey = null;
+    let bookHand = null;
+    let noHandSince = null;
+    let fiveOpenSince = null;
+    let lastTwoHandSeenAt = 0;
+    let pausedLastPointer = null;
+    let pausedMotion = 0;
+    let pausedMotionStartedAt = 0;
+    let pausedLastMoveAt = 0;
+
+    const selection = {
+      active: false,
+      tipA: null,
+      tipB: null,
+      startedAt: 0,
+      lastSeenAt: 0,
+      cooldownUntil: 0
+    };
+    const twoHandCandidate = { since: 0, lastSeenAt: 0, tips: null };
+    let lastSelection = null;
+
+    const demo = { present: false, x: 0, y: 0, drag: null };
+    const brightness = {
+      canvas: document.createElement("canvas"),
+      baseline: null,
+      samples: 0,
+      darkFrames: 0,
+      lastSampleAt: 0
+    };
+    brightness.canvas.width = 48;
+    brightness.canvas.height = 48;
+    const brightnessCtx = brightness.canvas.getContext("2d", { willReadFrequently: true });
+    const handInputCanvas = document.createElement("canvas");
+    const handInputCtx = handInputCanvas.getContext("2d", { alpha: false });
+
+    let gestureHistory = [];
+    let dEventSequence = 0;
+
+    function initAudio() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) audioCtx = new AudioContextClass();
+      }
+      if (audioCtx?.state === "suspended") audioCtx.resume().catch(() => {});
+    }
+
+    function playTone(freq, duration, type = "sine", endFreq = null) {
+      if (!audioCtx || !soundEnabled) return;
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, now);
+      if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.1, now + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.00001, now + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+    }
+
+    function playSoundStart() {
+      playTone(800, 0.1, "sine");
+    }
+
+    function playSoundErrorDown() {
+      playTone(300, 0.2, "triangle");
+    }
+
+    function playSoundErrorUp() {
+      playTone(400, 0.2, "triangle");
+    }
+
+    function playSoundSkip() {
+      playTone(600, 0.15, "sine", 900);
+    }
+
+    function playSoundSelect() {
+      playTone(500, 0.08, "sine");
+      setTimeout(() => playTone(500, 0.08, "sine"), 100);
+    }
+
+    function playSoundPause() {
+      playTone(200, 0.3, "sine");
+    }
+
+    function playSoundLineEnd() {
+      playTone(AUDIO_LINE_END_FREQ, 0.075, "sine");
+    }
+
+    function setState(nextState, hint = "") {
+      state = nextState;
+      const meta = STATE_META[nextState] || STATE_META.idle;
+      document.body.dataset.state = nextState;
+      stateName.textContent = meta.label;
+      stateCode.textContent = meta.code;
+      stateSub.textContent = meta.sub;
+      stateHint.textContent = hint || "等待手势输入。";
+    }
+
+    function showToast(message, tone = "success") {
+      const toast = document.createElement("div");
+      toast.className = `toast ${tone}`;
+      toast.textContent = message;
+      toastStack.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transition = "opacity 150ms ease";
+        setTimeout(() => toast.remove(), 170);
+      }, 1800);
+    }
+
+    function addGestureHistory(title, detail, tone = "neutral") {
+      gestureHistory.unshift({
+        time: new Date().toLocaleTimeString("zh-CN", {
+          hour12: false,
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit"
+        }),
+        title,
+        detail,
+        tone
+      });
+      gestureHistory = gestureHistory.slice(0, 35);
+      renderGestureHistory();
+    }
+
+    function renderGestureHistory() {
+      historyList.replaceChildren();
+      historyCount.textContent = String(gestureHistory.length);
+      if (!gestureHistory.length) {
+        const empty = document.createElement("li");
+        empty.className = "history-empty";
+        empty.textContent = "尚无手势事件";
+        historyList.appendChild(empty);
+        return;
+      }
+      const fragment = document.createDocumentFragment();
+      gestureHistory.forEach((entry) => {
+        const item = document.createElement("li");
+        item.className = "history-item";
+        const time = document.createElement("time");
+        time.textContent = entry.time;
+        const copy = document.createElement("span");
+        copy.className = "history-copy";
+        copy.textContent = `${entry.title} · ${entry.detail}`;
+        item.append(time, copy);
+        fragment.appendChild(item);
+      });
+      historyList.appendChild(fragment);
+    }
+
+    // -------------------------------------------------------------------------
+    // D module contract
+    // -------------------------------------------------------------------------
+    window.onWordFocus = function onWordFocus(data) {
+      console.info("[D-Module]", JSON.stringify(data));
+    };
+
+    function toEventData(event, word) {
+      if (!word?.line) return null;
+      return {
+        event,
+        lineId: String(word.lineId),
+        word: word.text,
+        fullLine: word.line.text,
+        timestamp: Math.floor(Date.now() / 1000)
+      };
+    }
+
+    function emitWordFocus(event, word) {
+      const data = toEventData(event, word);
+      if (!data) return;
+      appendDLog(data);
+      try {
+        if (typeof window.onWordFocus === "function") {
+          window.onWordFocus(data);
+        }
+      } catch (error) {
+        console.error("[D-Module] onWordFocus threw", error);
+      }
+    }
+
+    function appendDLog(data) {
+      const placeholder = dLogList.querySelector(".d-empty");
+      if (placeholder) placeholder.remove();
+      const entry = document.createElement("li");
+      entry.className = `d-entry ${data.event}`;
+      const time = document.createElement("time");
+      time.textContent = new Date().toLocaleTimeString("zh-CN", {
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+      const copy = document.createElement("div");
+      copy.className = "d-entry-copy";
+      const title = document.createElement("strong");
+      title.textContent = data.event === "focus"
+        ? "FOCUS"
+        : data.event === "missed_line"
+          ? "MISSED LINE"
+          : "SKIP LINE";
+      const content = document.createElement("span");
+      content.textContent = `行: ${data.lineId} | 内容: "${data.word}"`;
+      copy.append(title, content);
+      entry.append(time, copy);
+      dLogList.prepend(entry);
+      while (dLogList.children.length > 100) dLogList.lastElementChild?.remove();
+      dEventSequence += 1;
+      dEventCount.textContent = String(dEventSequence);
+      dLogList.scrollTop = 0;
+    }
+
+    function appendDSystemLog(message) {
+      const placeholder = dLogList.querySelector(".d-empty");
+      if (placeholder) placeholder.remove();
+      const entry = document.createElement("li");
+      entry.className = "d-entry";
+      const time = document.createElement("time");
+      time.textContent = new Date().toLocaleTimeString("zh-CN", {
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+      const copy = document.createElement("div");
+      copy.className = "d-entry-copy";
+      const strong = document.createElement("strong");
+      strong.textContent = "SYSTEM";
+      const span = document.createElement("span");
+      span.textContent = message;
+      copy.append(strong, span);
+      entry.append(time, copy);
+      dLogList.prepend(entry);
+    }
+
+    // -------------------------------------------------------------------------
+    // JSON validation, equal-width word splitting and DOM rendering
+    // -------------------------------------------------------------------------
+    function segmentLine(text) {
+      if (typeof Intl?.Segmenter === "function") {
+        const segmenter = new Intl.Segmenter("zh-CN", { granularity: "word" });
+        return Array.from(segmenter.segment(text), (part) => ({
+          text: part.segment,
+          wordLike: part.isWordLike,
+          characterCount: Array.from(part.segment).length
+        }));
+      }
+      return Array.from(text).map((character) => ({
+        text: character,
+        wordLike: /\p{L}|\p{N}|\p{P}/u.test(character),
+        characterCount: 1
+      }));
+    }
+
+    function validateAndBuildMap(rawData) {
+      if (!rawData || !Array.isArray(rawData.lines) || !rawData.lines.length) {
+        throw new Error("JSON 必须包含非空 lines 数组");
+      }
+
+      const usedIds = new Set();
+      const parsedLines = rawData.lines.map((rawLine, order) => {
+        if (rawLine == null || typeof rawLine !== "object") {
+          throw new Error(`lines[${order}] 不是对象`);
+        }
+        const text = typeof rawLine.text === "string" ? rawLine.text : "";
+        if (!text.length) throw new Error(`lines[${order}].text 为空`);
+        if (!Array.isArray(rawLine.bbox_rectified) || rawLine.bbox_rectified.length !== 4) {
+          throw new Error(`lines[${order}].bbox_rectified 必须是 [x,y,w,h]`);
+        }
+        const bbox = rawLine.bbox_rectified.map(Number);
+        if (!bbox.every(Number.isFinite) || bbox[2] <= 0 || bbox[3] <= 0) {
+          throw new Error(`lines[${order}].bbox_rectified 数值无效`);
+        }
+        let id = rawLine.id == null ? "" : String(rawLine.id);
+        if (!id) throw new Error(`lines[${order}].id 为空`);
+        if (usedIds.has(id)) {
+          let suffix = 2;
+          while (usedIds.has(`${id}#${suffix}`)) suffix += 1;
+          id = `${id}#${suffix}`;
+        }
+        usedIds.add(id);
+        return {
+          id,
+          text,
+          x: bbox[0],
+          y: bbox[1],
+          width: bbox[2],
+          height: bbox[3],
+          originalOrder: order,
+          readingOrder: Number.isFinite(Number(rawLine.reading_order))
+            ? Number(rawLine.reading_order)
+            : order + 1
+        };
+      });
+
+      parsedLines.sort((a, b) =>
+        a.readingOrder - b.readingOrder ||
+        a.y - b.y ||
+        a.x - b.x ||
+        a.originalOrder - b.originalOrder
+      );
+      parsedLines.forEach((line, index) => {
+        line.order = index + 1;
+        line.centerY = line.y + line.height / 2;
+        line.centerX = line.x + line.width / 2;
+        line.characterCount = Math.max(1, Array.from(line.text).length);
+        line.characterWidth = line.width / line.characterCount;
+        line.words = [];
+      });
+
+      parsedLines.forEach((line, index) => {
+        line.touchTop = line.centerY - line.height / 2;
+        line.touchBottom = line.centerY + line.height / 2;
+        line.yTolerance = line.height;
+      });
+
+      const readSizePair = (value) => {
+        if (Array.isArray(value) && value.length >= 2) {
+          return [Number(value[0]), Number(value[1])];
+        }
+        if (value && typeof value === "object") {
+          return [
+            Number(value.width ?? value.w),
+            Number(value.height ?? value.h)
+          ];
+        }
+        return [NaN, NaN];
+      };
+      const [rectifiedWidth, rectifiedHeight] = readSizePair(rawData.rectified_size);
+      const [fallbackWidth, fallbackHeight] = readSizePair(rawData.source_size);
+      const positiveNumber = (value) => {
+        const number = Number(value);
+        return Number.isFinite(number) && number > 0 ? number : null;
+      };
+      const declaredWidth = [
+        rectifiedWidth,
+        rawData.image_width,
+        rawData.imageWidth,
+        rawData.canvas_width,
+        rawData.canvasWidth,
+        rawData.width,
+        fallbackWidth
+      ].map(positiveNumber).find((value) => value !== null);
+      const declaredHeight = [
+        rectifiedHeight,
+        rawData.image_height,
+        rawData.imageHeight,
+        rawData.canvas_height,
+        rawData.canvasHeight,
+        rawData.height,
+        fallbackHeight
+      ].map(positiveNumber).find((value) => value !== null);
+      const inferredWidth = Math.max(...parsedLines.map((line) => line.x + line.width));
+      const inferredHeight = Math.max(...parsedLines.map((line) => line.y + line.height));
+      const width = Number.isFinite(declaredWidth) && declaredWidth > 0 ? declaredWidth : inferredWidth;
+      const height = Number.isFinite(declaredHeight) && declaredHeight > 0 ? declaredHeight : inferredHeight;
+      if (!(width > 0 && height > 0)) throw new Error("无法确定文字地图坐标范围");
+
+      const globalWords = [];
+      parsedLines.forEach((line) => {
+        const segments = segmentLine(line.text);
+        let characterCursor = 0;
+        let localIndex = 0;
+        segments.forEach((part) => {
+          const startX = line.x + characterCursor * line.characterWidth;
+          const word = {
+            id: `${line.id}:${localIndex}`,
+            text: part.text,
+            fullLine: line.text,
+            x: startX,
+            y: line.y,
+            width: part.characterCount * line.characterWidth,
+            height: line.height,
+            lineId: line.id,
+            lineOrder: line.order,
+            localIndex,
+            globalIndex: globalWords.length,
+            isWhitespace: !part.text.trim().length,
+            line,
+            element: null
+          };
+          if (!word.isWhitespace) {
+            line.words.push(word);
+            globalWords.push(word);
+            localIndex += 1;
+          }
+          characterCursor += part.characterCount;
+        });
+
+        if (!line.words.length) {
+          Array.from(line.text).forEach((character) => {
+            const word = {
+              id: `${line.id}:${localIndex}`,
+              text: character,
+              fullLine: line.text,
+              x: line.x + localIndex * line.characterWidth,
+              y: line.y,
+              width: line.characterWidth,
+              height: line.height,
+              lineId: line.id,
+              lineOrder: line.order,
+              localIndex,
+              globalIndex: globalWords.length,
+              isWhitespace: false,
+              line,
+              element: null
+            };
+            line.words.push(word);
+            globalWords.push(word);
+            localIndex += 1;
+          });
+        }
+        line.words.forEach((word, index) => { word.localIndex = index; });
+      });
+
+      return {
+        width,
+        height,
+        lines: parsedLines,
+        words: globalWords,
+        fileName: ""
+      };
+    }
+
+    function loadJsonFile(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result || ""));
+          const map = validateAndBuildMap(parsed);
+          applyMap(map, file.name);
+        } catch (error) {
+          bootStatus.textContent = `加载失败：${error.message || error}`;
+          showToast(`JSON 加载失败：${error.message || error}`, "error");
+          panelMeta.textContent = "JSON 校验失败";
+        }
+      };
+      reader.onerror = () => {
+        bootStatus.textContent = "文件读取失败";
+        showToast("文件读取失败", "error");
+      };
+      reader.readAsText(file, "utf-8");
+    }
+
+    function applyMap(map, name) {
+      sourceWidth = map.width;
+      sourceHeight = map.height;
+      lineMap = map.lines;
+      lineById = new Map(lineMap.map((line) => [line.id, line]));
+      wordMap = map.words;
+      mapLoaded = true;
+      activeLineId = null;
+      activeWord = null;
+      hoverWord = null;
+      forcedLineId = null;
+      takeoverOriginY = null;
+      takeoverRearmRequired = false;
+      lineCandidate = null;
+      lineEndSignaledLineId = null;
+      pointerTrace = {
+        x: 0,
+        y: 0,
+        at: 0,
+        velocityX: 0,
+        velocityY: 0,
+        speed: 0,
+        lineId: null,
+        wordIndex: null
+      };
+      dEventSequence = 0;
+      dEventCount.textContent = "0";
+      dLogList.replaceChildren();
+      const placeholder = document.createElement("li");
+      placeholder.className = "d-empty";
+      placeholder.textContent = "文字地图已加载，等待字词焦点事件。";
+      dLogList.appendChild(placeholder);
+      fileName.textContent = name || "";
+      dStatus.textContent = `${lineMap.length} 行 · ${wordMap.length} 词已就绪`;
+      panelMeta.textContent = `${lineMap.length} 行 · ${wordMap.length} 词`;
+      mapCountText.textContent = `${lineMap.length} 行 / ${wordMap.length} 词`;
+      bootStatus.textContent = `已加载 ${lineMap.length} 行、${wordMap.length} 个词/标点。`;
+      emptyMap.classList.add("hidden");
+      renderMapLayout();
+      resetReadingUi();
+      addGestureHistory("加载文字地图", name || "JSON", "success");
+      showToast(`已加载 ${lineMap.length} 行文字地图`);
+    }
+
+    function renderMapLayout() {
+      if (!mapLoaded) return;
+      const availableWidth = mapViewport.clientWidth;
+      const availableHeight = mapViewport.clientHeight;
+      if (!availableWidth || !availableHeight) return;
+      displayScale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight);
+      displayOffsetX = (availableWidth - sourceWidth * displayScale) / 2;
+      displayOffsetY = (availableHeight - sourceHeight * displayScale) / 2;
+      mapLayer.style.width = `${sourceWidth * displayScale}px`;
+      mapLayer.style.height = `${sourceHeight * displayScale}px`;
+      mapLayer.style.left = `${displayOffsetX}px`;
+      mapLayer.style.top = `${displayOffsetY}px`;
+      mapLayer.replaceChildren();
+      activeElement = null;
+      hoveredElement = null;
+      activeWord = null;
+      hoverWord = null;
+
+      lineMap.forEach((line) => {
+        const lineElement = document.createElement("div");
+        lineElement.className = "ocr-line";
+        lineElement.style.left = `${line.x * displayScale}px`;
+        lineElement.style.top = `${line.y * displayScale}px`;
+        lineElement.style.width = `${line.width * displayScale}px`;
+        lineElement.style.height = `${line.height * displayScale}px`;
+
+        line.words.forEach((word) => {
+          const element = document.createElement("span");
+          element.className = "ocr-word";
+          element.textContent = word.text;
+          element.dataset.lineId = word.lineId;
+          element.dataset.wordIndex = String(word.globalIndex);
+          element.style.left = `${(word.x - line.x) * displayScale}px`;
+          element.style.top = "0";
+          element.style.width = `${word.width * displayScale}px`;
+          element.style.height = `${word.height * displayScale}px`;
+          element.style.fontSize = `${Math.max(
+            1,
+            Math.min(
+              displayScale * line.characterWidth * 0.9,
+              displayScale * line.height * 0.78
+            )
+          )}px`;
+          word.element = element;
+          lineElement.appendChild(element);
+        });
+        mapLayer.appendChild(lineElement);
+      });
+
+      sourceMeta.textContent = `${Math.round(sourceWidth)} × ${Math.round(sourceHeight)} · ${lineMap.length} 行 · ${wordMap.length} 词`;
+    }
+
+    function resetReadingUi() {
+      linePill.textContent = "无活动行";
+      wordText.textContent = "等待真实文字数据";
+      wordMeta.textContent = "—";
+      wordContext.textContent = mapLoaded ? "移动食指命中上传 JSON 中的文字区域。" : "没有内置测试文本。";
+      readState.textContent = "上次词焦点：—";
+      setState("idle", mapLoaded ? "文字地图已就绪，开始手势测试。" : "请先上传文字地图 JSON。");
+    }
+
+    // -------------------------------------------------------------------------
+    // Dynamic line hit regions and X-axis word mapping
+    // -------------------------------------------------------------------------
+    function screenToMap(x, y) {
+      const rect = mapViewport.getBoundingClientRect();
+      return {
+        x: (x - rect.left - displayOffsetX) / displayScale,
+        y: (y - rect.top - displayOffsetY) / displayScale
+      };
+    }
+
+    function mapToScreen(x, y) {
+      const rect = mapViewport.getBoundingClientRect();
+      return {
+        x: rect.left + displayOffsetX + x * displayScale,
+        y: rect.top + displayOffsetY + y * displayScale
+      };
+    }
+
+    function findLineAtY(y) {
+      let best = null;
+      let bestDistance = Infinity;
+      for (const line of lineMap) {
+        if (y < line.touchTop || y > line.touchBottom) continue;
+        const distance = Math.abs(y - line.centerY);
+        if (distance < bestDistance) {
+          best = line;
+          bestDistance = distance;
+        }
+      }
+      return best;
+    }
+
+    function findWordByX(line, x) {
+      if (!line?.words.length) return null;
+      if (x <= line.x) return line.words[0];
+      if (x >= line.x + line.width) return line.words[line.words.length - 1];
+      return line.words.reduce((best, word) => {
+        const distance = Math.abs(x - (word.x + word.width / 2));
+        const bestDistance = Math.abs(x - (best.x + best.width / 2));
+        return distance < bestDistance ? word : best;
+      }, line.words[0]);
+    }
+
+    function wordPathWithinLine(line, startIndex, endIndex) {
+      if (!line || startIndex === null || endIndex === null || startIndex === endIndex) return [];
+      if (endIndex > startIndex) return line.words.slice(startIndex + 1, endIndex + 1);
+      return line.words.slice(endIndex, startIndex).reverse();
+    }
+
+    function nearestWordInForcedLine(lineId, x) {
+      return findWordByX(lineById.get(lineId), x);
+    }
+
+    // -------------------------------------------------------------------------
+    // Pointer state machine
+    // -------------------------------------------------------------------------
+    function getPointerStickyMs() {
+      const frameMs = smoothedFps > 0 ? 1000 / smoothedFps : LINE_SWITCH_DEBOUNCE_MS;
+      return Math.max(LINE_SWITCH_DEBOUNCE_MS, frameMs * 3);
+    }
+
+    function updatePointerTrace(screenX, screenY, now) {
+      const point = screenToMap(screenX, screenY);
+      const previous = { ...pointerTrace };
+      const dt = previous.at && now > previous.at ? now - previous.at : 0;
+      const rawDx = previous.at ? point.x - previous.x : 0;
+      const rawDy = previous.at ? point.y - previous.y : 0;
+      const physicalLine = findLineAtY(point.y);
+      const activeLine = activeLineId ? lineById.get(activeLineId) : null;
+      let effectiveLine = activeLine || physicalLine;
+      let switchingIntent = false;
+
+      if (forcedLineId) {
+        effectiveLine = lineById.get(forcedLineId) || effectiveLine;
+      } else if (activeLine && physicalLine && physicalLine.id !== activeLine.id) {
+        effectiveLine = physicalLine;
+        switchingIntent = true;
+      }
+
+      const dx = rawDx;
+      const dy = rawDy;
+      if (dt) {
+        pointerTrace.velocityX = pointerTrace.velocityX * 0.55 + (rawDx / dt) * 1000 * 0.45;
+        pointerTrace.velocityY = pointerTrace.velocityY * 0.55 + (rawDy / dt) * 1000 * 0.45;
+        pointerTrace.speed = Math.hypot(pointerTrace.velocityX, pointerTrace.velocityY);
+      } else {
+        pointerTrace.velocityX = 0;
+        pointerTrace.velocityY = 0;
+        pointerTrace.speed = 0;
+      }
+
+      const word = effectiveLine ? findWordByX(effectiveLine, point.x) : null;
+      const previousIndex = previous.lineId === effectiveLine?.id ? previous.wordIndex : null;
+      const currentIndex = word?.localIndex ?? null;
+      const pathWords = word
+        ? wordPathWithinLine(effectiveLine, previousIndex, currentIndex)
+        : [];
+
+      pointerTrace.x = point.x;
+      pointerTrace.y = point.y;
+      pointerTrace.at = now;
+      pointerTrace.lineId = effectiveLine?.id ?? null;
+      pointerTrace.wordIndex = currentIndex;
+
+      return {
+        screenX,
+        screenY,
+        x: point.x,
+        y: point.y,
+        dx,
+        dy,
+        speed: pointerTrace.speed,
+        physicalLine,
+        line: effectiveLine,
+        lineId: effectiveLine?.id ?? null,
+        word,
+        pathWords,
+        switchingIntent,
+        lineChanged: Boolean(previous.lineId && effectiveLine && previous.lineId !== effectiveLine.id)
+      };
+    }
+
+    function setHoverWord(word) {
+      if (hoverWord === word) return;
+      if (hoveredElement) hoveredElement.classList.remove("hovered");
+      hoverWord = word;
+      hoveredElement = word?.element || null;
+      if (hoveredElement) hoveredElement.classList.add("hovered");
+    }
+
+    function setActiveWord(word, announce = true, eventName = "focus") {
+      if (activeElement && activeElement !== word?.element) {
+        activeElement.classList.remove("active");
+      }
+      activeWord = word;
+      activeElement = word?.element || null;
+      if (!word) {
+        wordText.textContent = "等待真实文字数据";
+        wordMeta.textContent = "—";
+        return;
+      }
+      activeElement.classList.add("active");
+      updateReadingPanel(word);
+      if (announce) emitWordFocus(eventName, word);
+    }
+
+    function flashTrail(words) {
+      words.forEach((word) => {
+        word.element?.classList.add("trail");
+        setTimeout(() => word.element?.classList.remove("trail"), 420);
+      });
+    }
+
+    function updateReadingPanel(word) {
+      linePill.textContent = `行：${word.lineId}`;
+      wordText.textContent = word.text;
+      wordMeta.textContent = `第 ${word.localIndex + 1} / ${word.line.words.length} 个词`;
+      wordContext.textContent = word.line.text;
+      readState.textContent = `上次词焦点：${word.lineId} · ${word.text}`;
+    }
+
+    function publishTrajectory(words, eventName = "focus") {
+      if (!words.length) return false;
+      const finalWord = words[words.length - 1];
+      words.forEach((word) => emitWordFocus(eventName, word));
+      setHoverWord(finalWord);
+      setActiveWord(finalWord, false);
+      flashTrail(words);
+      if (words.length > 1) {
+        const text = words.map((word) => word.text).join("");
+        wordText.textContent = text.length > 32 ? `…${text.slice(-32)}` : text;
+        wordMeta.textContent = `连续 ${words.length} 个词`;
+        wordContext.textContent = finalWord.line.text;
+      }
+      return true;
+    }
+
+    function updateLineEnd(trace, lineId, unlockTakeover = false) {
+      const line = lineById.get(lineId);
+      if (!line || !trace) return false;
+      const beyondRight = trace.x > line.x + line.width;
+      const movingRight = trace.dx > 0 || pointerTrace.velocityX > 0;
+      if (beyondRight && movingRight && lineEndSignaledLineId !== lineId) {
+        lineEndSignaledLineId = lineId;
+        playSoundLineEnd();
+        showToast(`行 ${lineId} 已到末尾`);
+        addGestureHistory("行尾提示", String(lineId), "success");
+      }
+      if (trace.x < line.x + line.width - line.characterWidth) {
+        if (lineEndSignaledLineId === lineId) lineEndSignaledLineId = null;
+      }
+      return unlockTakeover && beyondRight && movingRight;
+    }
+
+    function clearTakeoverForEscape() {
+      forcedLineId = null;
+      takeoverOriginY = null;
+      takeoverRearmRequired = false;
+      activeLineId = null;
+      lineCandidate = null;
+    }
+
+    function handlePointerWord(trace, now) {
+      if (!sessionActive || !mapLoaded || state === "paused" || state === "selecting") return;
+      if (!trace?.word || !trace.line) {
+        setHoverWord(null);
+        const stickyMs = getPointerStickyMs();
+        if (lastPointerSeenAt && now - lastPointerSeenAt <= stickyMs) {
+          setState(forcedLineId ? "takeover" : "pointing", "短暂失焦，保留最后一次字词位置。");
+          return;
+        }
+        clearHighlightedElements();
+        activeWord = null;
+        lineCandidate = null;
+        return;
+      }
+
+      lastPointerSeenAt = now;
+
+      if (takeoverRearmRequired) {
+        const movement = Math.hypot(trace.x - pointerTrace.x, trace.y - pointerTrace.y);
+        if (!trace.lineChanged && !trace.switchingIntent && Math.abs(trace.dx) + Math.abs(trace.dy) === 0) {
+          setState("pointing", "漏读接管已解除，移动手指继续正常阅读。");
+          return;
+        }
+        takeoverRearmRequired = false;
+      }
+
+      if (forcedLineId) {
+        const forcedLine = lineById.get(forcedLineId);
+        if (!forcedLine) {
+          forcedLineId = null;
+          takeoverOriginY = null;
+          return;
+        }
+        const verticalDistance = Math.abs(trace.y - takeoverOriginY);
+        const takeoverLineHeight = Math.max(
+          forcedLine.height,
+          ...lineMap.map((line) => line.height)
+        );
+        if (verticalDistance > takeoverLineHeight * 3) {
+          const abandoned = forcedLineId;
+          clearTakeoverForEscape();
+          setState("switching_line", `已放弃 ${abandoned} 行接管，跟随手指新位置。`);
+          addGestureHistory("放弃接管", "纵向移动超过三行高度", "warn");
+          const fresh = updatePointerTrace(trace.screenX, trace.screenY, now);
+          handlePointerWord(fresh, now);
+          return;
+        }
+        const forcedWord = findWordByX(forcedLine, trace.x);
+        setHoverWord(forcedWord);
+        const pathWords = wordPathWithinLine(
+          forcedLine,
+          pointerTrace.lineId === forcedLineId ? pointerTrace.wordIndex : null,
+          forcedWord?.localIndex ?? null
+        );
+        publishTrajectory(pathWords);
+        const reachedEnd = updateLineEnd(
+          { ...trace, line: forcedLine, lineId: forcedLineId },
+          forcedLineId,
+          true
+        );
+        if (reachedEnd) {
+          const completed = forcedLineId;
+          forcedLineId = null;
+          takeoverOriginY = null;
+          activeLineId = null;
+          lineCandidate = null;
+          pointerTrace.lineId = null;
+          pointerTrace.wordIndex = null;
+          takeoverRearmRequired = true;
+          setState("pointing", `${completed} 行行尾，接管解除；移动手指恢复正常追踪。`);
+          addGestureHistory("接管完成", String(completed), "success");
+        } else if (forcedLineId) {
+          setState("takeover", `接管 ${forcedLineId} 行：仅按 X 坐标映射。`);
+          linePill.textContent = `接管行：${forcedLineId}`;
+          wordMeta.textContent = "忽略物理 Y 坐标";
+        }
+        return;
+      }
+
+      const lineId = trace.lineId;
+      if (activeLineId === null) {
+        if (!lineCandidate || lineCandidate.lineId !== lineId) {
+          lineCandidate = { lineId, since: now, lastSeenAt: now, word: trace.word, xMin: trace.x, xMax: trace.x, words: [] };
+        } else {
+          lineCandidate.lastSeenAt = now;
+          lineCandidate.word = trace.word;
+          lineCandidate.xMin = Math.min(lineCandidate.xMin, trace.x);
+          lineCandidate.xMax = Math.max(lineCandidate.xMax, trace.x);
+        }
+        setState("switching_line", `正在建立 ${lineId} 行动态吸附。`);
+        if (now - lineCandidate.since >= LINE_SWITCH_DEBOUNCE_MS) {
+          activeLineId = lineId;
+          publishTrajectory([trace.word]);
+          playSoundStart();
+          lineCandidate = null;
+          setState("pointing", `已锁定 ${lineId} 行。`);
+        }
+        return;
+      }
+
+      if (lineId === activeLineId) {
+        lineCandidate = null;
+        setHoverWord(trace.word);
+        publishTrajectory(trace.pathWords);
+        updateLineEnd(trace, lineId, false);
+        setState("pointing", `锁定 ${lineId} 行 · 按 X 坐标连续读取。`);
+        return;
+      }
+
+      if (!lineCandidate || lineCandidate.lineId !== lineId) {
+        lineCandidate = {
+          lineId,
+          since: now,
+          lastSeenAt: now,
+          word: trace.word,
+          xMin: trace.x,
+          xMax: trace.x,
+          words: []
+        };
+      } else {
+        lineCandidate.lastSeenAt = now;
+        lineCandidate.word = trace.word;
+        lineCandidate.xMin = Math.min(lineCandidate.xMin, trace.x);
+        lineCandidate.xMax = Math.max(lineCandidate.xMax, trace.x);
+      }
+      lineCandidate.words = lineCandidate.words.concat(trace.pathWords);
+      setHoverWord(trace.word);
+      const dwellElapsed = now - lineCandidate.since;
+      const horizontalTravel = lineCandidate.xMax - lineCandidate.xMin;
+      const readyToCommit =
+        dwellElapsed >= LINE_SWITCH_DEBOUNCE_MS &&
+        horizontalTravel > 2;
+      setState(
+        "switching_line",
+        `换行缓冲：${Math.round(dwellElapsed)} / ${LINE_SWITCH_DEBOUNCE_MS}ms，` +
+        `横向 ${Math.round(horizontalTravel)}px`
+      );
+
+      if (!readyToCommit) return;
+      commitLineTransition(lineCandidate.word || trace.word, lineCandidate.words, trace);
+    }
+
+    function commitLineTransition(targetWord, trajectoryWords, trace) {
+      const previousLine = lineById.get(activeLineId);
+      const targetLine = lineById.get(targetWord.lineId);
+      if (!previousLine || !targetLine) return;
+      const delta = targetLine.order - previousLine.order;
+      lineCandidate = null;
+      lineEndSignaledLineId = null;
+
+      if (delta === 1 || delta === -1) {
+        activeLineId = targetLine.id;
+        if (delta === -1) playSoundErrorUp();
+        publishTrajectory(trajectoryWords.length ? trajectoryWords : [targetWord]);
+        setState("pointing", delta === 1 ? "正常进入下一行。" : "正常向上回读一行。");
+        addGestureHistory(delta === 1 ? "下一行" : "向上回读", targetLine.id, "success");
+        return;
+      }
+
+      if (delta === 2) {
+        const forcedLine = lineMap[previousLine.order];
+        if (!forcedLine) return;
+        const forcedWord = findWordByX(forcedLine, trace.x);
+        if (!forcedWord) return;
+        forcedLineId = forcedLine.id;
+        takeoverOriginY = trace.y;
+        takeoverRearmRequired = false;
+        activeLineId = forcedLine.id;
+        lineEndSignaledLineId = null;
+        pointerTrace.lineId = forcedLine.id;
+        pointerTrace.wordIndex = forcedWord.localIndex;
+        setHoverWord(forcedWord);
+        playSoundErrorDown();
+        setActiveWord(forcedWord, true, "missed_line");
+        setState("takeover", `漏读接管：锁定 ${forcedLine.id}，仅按 X 坐标读取。`);
+        linePill.textContent = `接管行：${forcedLine.id}`;
+        wordMeta.textContent = "忽略物理 Y 坐标";
+        addGestureHistory("漏读接管", forcedLine.id, "warn");
+        showToast(`漏读接管：${forcedLine.id}`, "warn");
+        return;
+      }
+
+      if (Math.abs(delta) >= 3 || delta <= -2) {
+        forcedLineId = null;
+        takeoverOriginY = null;
+        activeLineId = targetLine.id;
+        playSoundSkip();
+        setActiveWord(targetWord, true, "skip_line");
+        setState("pointing", `跳读：${previousLine.id} → ${targetLine.id}`);
+        addGestureHistory("跳读", `${previousLine.id} → ${targetLine.id}`, "error");
+        showToast(`跳读：${targetLine.id}`, "error");
+      }
+    }
+
+    function clearHighlightedElements() {
+      hoveredElement?.classList.remove("hovered");
+      activeElement?.classList.remove("active");
+      hoveredElement = null;
+      activeElement = null;
+      hoverWord = null;
+      activeWord = null;
+    }
+
+    // -------------------------------------------------------------------------
+    // MediaPipe and gesture filters
+    // -------------------------------------------------------------------------
+    function angleAt(a, b, c) {
+      const ab = { x: a.x - b.x, y: a.y - b.y, z: (a.z || 0) - (b.z || 0) };
+      const cb = { x: c.x - b.x, y: c.y - b.y, z: (c.z || 0) - (b.z || 0) };
+      const la = Math.hypot(ab.x, ab.y, ab.z);
+      const lc = Math.hypot(cb.x, cb.y, cb.z);
+      if (!la || !lc) return 0;
+      const cosine = (ab.x * cb.x + ab.y * cb.y + ab.z * cb.z) / (la * lc);
+      return Math.acos(Math.min(1, Math.max(-1, cosine))) * 180 / Math.PI;
+    }
+
+    function analyzeFingers(landmarks) {
+      const fingers = {
+        thumb: angleAt(landmarks[2], landmarks[3], landmarks[4]) > 142,
+        index: angleAt(landmarks[5], landmarks[6], landmarks[8]) > 150,
+        middle: angleAt(landmarks[9], landmarks[10], landmarks[12]) > 150,
+        ring: angleAt(landmarks[13], landmarks[14], landmarks[16]) > 150,
+        pinky: angleAt(landmarks[17], landmarks[18], landmarks[20]) > 150
+      };
+      fingers.count = Object.values(fingers).filter(Boolean).length;
+      return fingers;
+    }
+
+    function isPointingIndex(hand) {
+      return Boolean(hand && hand.fingers.index && !hand.fingers.middle &&
+        !hand.fingers.ring && !hand.fingers.pinky);
+    }
+
+    function landmarkCenter(landmarks) {
+      const ids = [0, 5, 9, 13, 17];
+      return ids.reduce((center, id) => ({
+        x: center.x + landmarks[id].x / ids.length,
+        y: center.y + landmarks[id].y / ids.length,
+        z: center.z + (landmarks[id].z || 0) / ids.length
+      }), { x: 0, y: 0, z: 0 });
+    }
+
+    function handCenterDistance(a, b) {
+      const ca = landmarkCenter(a.landmarks);
+      const cb = landmarkCenter(b.landmarks);
+      return Math.hypot(ca.x - cb.x, ca.y - cb.y, (ca.z - cb.z) * 0.45);
+    }
+
+    function deduplicateHands(hands) {
+      const sorted = [...hands].sort((a, b) => b.confidence - a.confidence);
+      const unique = [];
+      sorted.forEach((hand) => {
+        const duplicate = unique.some((existing) =>
+          handCenterDistance(hand, existing) < 0.065 &&
+          Math.hypot(hand.landmarks[8].x - existing.landmarks[8].x,
+            hand.landmarks[8].y - existing.landmarks[8].y) < 0.085
+        );
+        if (!duplicate) unique.push(hand);
+      });
+      return unique.sort((a, b) => a.sourceIndex - b.sourceIndex);
+    }
+
+    function smoothHandPosture(hand, now) {
+      const raw = hand.fingers;
+      let filter = postureFilters.get(hand.key);
+      if (!filter || now - filter.lastSeenAt > POSTURE_FILTER_TTL) {
+        filter = { scores: {}, stable: {}, lastSeenAt: now };
+        FINGER_KEYS.forEach((name) => {
+          filter.scores[name] = raw[name] ? 0.82 : 0.12;
+          filter.stable[name] = Boolean(raw[name]);
+        });
+      } else {
+        filter.lastSeenAt = now;
+        FINGER_KEYS.forEach((name) => {
+          const next = filter.scores[name] + (raw[name] ? 0.36 : -0.42);
+          filter.scores[name] = Math.min(1, Math.max(0, next));
+          filter.stable[name] = filter.scores[name] >= (filter.stable[name] ? 0.36 : 0.64);
+        });
+      }
+      postureFilters.set(hand.key, filter);
+      hand.rawFingers = raw;
+      hand.fingers = {
+        thumb: filter.stable.thumb,
+        index: filter.stable.index,
+        middle: filter.stable.middle,
+        ring: filter.stable.ring,
+        pinky: filter.stable.pinky
+      };
+      hand.fingers.count = FINGER_KEYS.filter((name) => hand.fingers[name]).length;
+    }
+
+    function updateMotionHistory(hand, now) {
+      let points = motionHistories.get(hand.key) || [];
+      points.push({ t: now, x: hand.landmarks[8].x, y: hand.landmarks[8].y });
+      points = points.filter((point) => now - point.t <= 1000);
+      motionHistories.set(hand.key, points);
+      if (points.length < 2) return 0;
+      const mx = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+      const my = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+      return points.reduce((sum, point) =>
+        sum + Math.pow(point.x - mx, 2) + Math.pow(point.y - my, 2), 0) / points.length;
+    }
+
+    function choosePointerHand(hands, now) {
+      bookHand = null;
+      if (!hands.length) {
+        pointerKey = null;
+        return null;
+      }
+      if (hands.length === 1) {
+        hands[0].role = "pointer";
+        pointerKey = hands[0].key;
+        return hands[0];
+      }
+      const pointers = hands.filter(isPointingIndex);
+      const sorted = [...hands].sort((a, b) => b.motion - a.motion);
+      let pointer = pointers.length === 1
+        ? pointers[0]
+        : (motionHistories.get(sorted[0].key)?.length >= 5
+          ? sorted[0]
+          : hands.find((hand) => hand.key === pointerKey) || sorted[0]);
+      pointer.role = "pointer";
+      const other = hands.find((hand) => hand !== pointer);
+      if (other) {
+        other.role = "book";
+        bookHand = other;
+      }
+      pointerKey = pointer.key;
+      return pointer;
+    }
+
+    function getSelectionTips(hands, now) {
+      const pointers = hands.filter(isPointingIndex);
+      let pair = null;
+      for (let i = 0; i < pointers.length; i += 1) {
+        for (let j = i + 1; j < pointers.length; j += 1) {
+          if (handCenterDistance(pointers[i], pointers[j]) > 0.075) {
+            pair = [pointers[i].tip, pointers[j].tip];
+          }
+        }
+      }
+      if (pair) {
+        if (!twoHandCandidate.since) twoHandCandidate.since = now;
+        twoHandCandidate.lastSeenAt = now;
+        twoHandCandidate.tips = pair;
+        if (selection.active || now - twoHandCandidate.since >= TWO_HAND_CONFIRM_MS) return pair;
+        return null;
+      }
+      if (
+        selection.active &&
+        hands.length < 2 &&
+        twoHandCandidate.tips &&
+        now - twoHandCandidate.lastSeenAt <= TWO_HAND_HOLD_MS
+      ) {
+        return twoHandCandidate.tips;
+      }
+      if (now - twoHandCandidate.lastSeenAt > TWO_HAND_HOLD_MS) {
+        twoHandCandidate.since = 0;
+        twoHandCandidate.lastSeenAt = 0;
+        twoHandCandidate.tips = null;
+      }
+      return null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Selection, pause and MediaPipe callbacks
+    // -------------------------------------------------------------------------
+    function updateSelectionFromTips(tips, now) {
+      if (state === "paused" || !sessionActive) return true;
+      if (now < selection.cooldownUntil) return false;
+      if (tips) {
+        if (!selection.active) {
+          selection.active = true;
+          selection.startedAt = now;
+          clearHighlightedElements();
+          forcedLineId = null;
+          takeoverOriginY = null;
+          lineCandidate = null;
+          setState("selecting", "双手食指已确认，拖动选区。");
+          addGestureHistory("开始框选", "双手食指", "neutral");
+        }
+        selection.tipA = tips[0];
+        selection.tipB = tips[1];
+        selection.lastSeenAt = now;
+        return true;
+      }
+      if (selection.active && now - selection.lastSeenAt > Math.max(LINE_SWITCH_DEBOUNCE_MS, 180)) {
+        finishSelection();
+        return true;
+      }
+      return selection.active;
+    }
+
+    function finishSelection() {
+      const rect = normalizeRect(selection.tipA, selection.tipB);
+      selection.active = false;
+      selection.tipA = null;
+      selection.tipB = null;
+      selection.cooldownUntil = performance.now() + LINE_SWITCH_DEBOUNCE_MS * 2;
+      if (rect) commitSelectionRect(rect);
+    }
+
+    function commitSelectionRect(rect) {
+      if (!rect || !mapLoaded || !wordMap.length) {
+        setState("idle", "当前没有可框选的 OCR 文字。");
+        return;
+      }
+      lastSelection = { rect, expiresAt: performance.now() + 1500 };
+      const hits = wordMap.filter((word) => {
+        const box = word.element?.getBoundingClientRect();
+        return box &&
+          box.right >= rect.x && box.left <= rect.x + rect.width &&
+          box.bottom >= rect.y && box.top <= rect.y + rect.height;
+      });
+      if (!hits.length) {
+        wordText.textContent = "未选中文字";
+        wordMeta.textContent = "0 个词";
+        playSoundSelect();
+        setState("selecting", "框选完成，未覆盖 JSON 文字。");
+        return;
+      }
+      const byLine = new Map();
+      hits.forEach((word) => {
+        if (!byLine.has(word.lineId)) byLine.set(word.lineId, []);
+        byLine.get(word.lineId).push(word);
+      });
+      const text = Array.from(byLine.entries()).map(([lineId, words]) =>
+        `${lineId}: ${words.map((word) => word.text).join("")}`
+      ).join("；");
+      wordText.textContent = `已框选 ${hits.length} 个词`;
+      wordMeta.textContent = `${byLine.size} 行`;
+      wordContext.textContent = text;
+      playSoundSelect();
+      addGestureHistory("框选完成", text, "success");
+      setState("selecting", `框选命中 ${hits.length} 个词/标点。`);
+    }
+
+    function normalizeRect(a, b) {
+      if (!a || !b) return null;
+      return {
+        x: Math.min(a.x, b.x),
+        y: Math.min(a.y, b.y),
+        width: Math.abs(a.x - b.x),
+        height: Math.abs(a.y - b.y)
+      };
+    }
+
+    function triggerPause(reason) {
+      if (!sessionActive || state === "paused") return;
+      pauseReason = reason;
+      noHandSince = null;
+      fiveOpenSince = null;
+      lineCandidate = null;
+      forcedLineId = null;
+      takeoverOriginY = null;
+      resetPauseRecovery();
+      clearHighlightedElements();
+      setState("paused", PAUSE_REASONS[reason] || "暂停条件已触发");
+      playSoundPause();
+      addGestureHistory("暂停", PAUSE_REASONS[reason] || "条件触发", "warn");
+      showToast(`已暂停：${PAUSE_REASONS[reason] || "条件触发"}`, "warn");
+    }
+
+    function resetPauseRecovery() {
+      pausedLastPointer = null;
+      pausedMotion = 0;
+      pausedMotionStartedAt = 0;
+      pausedLastMoveAt = 0;
+    }
+
+    function attemptResume(pointer, now) {
+      if (state !== "paused") return;
+      if (!pointer || !isPointingIndex(pointer)) {
+        resetPauseRecovery();
+        return;
+      }
+      const point = pointer.tip;
+      if (!pausedLastPointer) {
+        pausedLastPointer = { x: point.x, y: point.y };
+        pausedMotionStartedAt = now;
+        pausedLastMoveAt = now;
+        return;
+      }
+      const distance = Math.hypot(point.x - pausedLastPointer.x, point.y - pausedLastPointer.y);
+      pausedLastPointer = { x: point.x, y: point.y };
+      if (distance < 32) {
+        pausedMotion += distance;
+        pausedLastMoveAt = now;
+      } else {
+        pausedMotion = 0;
+        pausedMotionStartedAt = now;
+      }
+      if (pausedMotion >= 15 && now - pausedMotionStartedAt >= 170 && now - pausedLastMoveAt < 260) {
+        resetPauseRecovery();
+        setState("pointing", "检测到单指移动，恢复追踪。");
+        addGestureHistory("恢复", "单指移动", "success");
+        playSoundStart();
+      }
+    }
+
+    function monitorPauseTriggers(hands, pointer, now) {
+      if (!hands.length) {
+        fiveOpenSince = null;
+        if (noHandSince === null) noHandSince = now;
+        if (now - noHandSince >= 1000 && state !== "paused") triggerPause("noHand");
+      } else {
+        noHandSince = null;
+      }
+      const openHands = hands.filter((hand) => hand.fingers.count === 5);
+      const pauseHand = hands.length === 1 ? openHands[0] : null;
+      if (pauseHand) {
+        if (fiveOpenSince === null) fiveOpenSince = now;
+        if (now - fiveOpenSince >= 500 && state !== "paused") triggerPause("five");
+      } else {
+        fiveOpenSince = null;
+      }
+      if (state === "paused") attemptResume(pointer, now);
+    }
+
+    function sampleCenterBrightness(now) {
+      if (sessionMode !== "camera" || !sessionActive || video.readyState < 2) return;
+      if (now - brightness.lastSampleAt < getPointerStickyMs()) return;
+      brightness.lastSampleAt = now;
+      try {
+        const w = video.videoWidth;
+        const h = video.videoHeight;
+        brightnessCtx.drawImage(video, w * 0.25, h * 0.22, w * 0.5, h * 0.56, 0, 0, 48, 48);
+        const pixels = brightnessCtx.getImageData(0, 0, 48, 48).data;
+        let total = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          total += pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722;
+        }
+        const average = total / (48 * 48);
+        if (brightness.baseline === null) {
+          brightness.baseline = average;
+          brightness.samples = 1;
+          return;
+        }
+        brightness.samples += 1;
+        if (brightness.samples < 8) {
+          brightness.baseline = brightness.baseline * 0.78 + average * 0.22;
+          return;
+        }
+        const dropRatio = (brightness.baseline - average) / Math.max(1, brightness.baseline);
+        if (dropRatio > 0.28) {
+          brightness.darkFrames += 1;
+          if (brightness.darkFrames >= 2 && state !== "paused" && currentHands.length === 0) {
+            triggerPause("occlusion");
+          }
+        } else {
+          brightness.darkFrames = 0;
+        }
+        brightness.baseline = brightness.baseline * 0.98 + average * 0.02;
+      } catch (error) {
+        brightness.lastSampleAt = now + 5000;
+      }
+    }
+
+    function getVideoRenderRect() {
+      const vw = video.videoWidth || 1280;
+      const vh = video.videoHeight || 720;
+      const vwViewport = window.innerWidth;
+      const vhViewport = window.innerHeight;
+      const scale = Math.max(vwViewport / vw, vhViewport / vh);
+      return {
+        x: (vwViewport - vw * scale) / 2,
+        y: (vhViewport - vh * scale) / 2,
+        width: vw * scale,
+        height: vh * scale
+      };
+    }
+
+    function cameraPointToScreen(nx, ny) {
+      const rect = getVideoRenderRect();
+      let x = rect.x + nx * rect.width;
+      if (isMirrored) x = window.innerWidth - x;
+      return { x, y: rect.y + ny * rect.height };
+    }
+
+    function makeHand(landmarks, label, sourceIndex, confidence) {
+      const points = landmarks.map((point) => cameraPointToScreen(point.x, point.y));
+      return {
+        landmarks,
+        points,
+        tip: points[8],
+        fingers: analyzeFingers(landmarks),
+        key: label || `Hand-${sourceIndex}`,
+        sourceIndex,
+        confidence,
+        motion: 0,
+        role: "unknown"
+      };
+    }
+
+    function onHandResults(results) {
+      if (!sessionActive || sessionMode !== "camera") return;
+      const now = performance.now();
+      const raw = results.multiHandLandmarks || [];
+      const handedness = results.multiHandedness || [];
+      const usedKeys = new Set();
+      const detected = raw.map((landmarks, index) => {
+        const meta = handedness[index] || {};
+        let key = meta.label || `Hand${index}`;
+        if (usedKeys.has(key)) key = `${key}-${index}`;
+        usedKeys.add(key);
+        return makeHand(landmarks, key, index, meta.score || 0);
+      });
+      currentHands = deduplicateHands(detected);
+      currentHands.forEach((hand) => {
+        smoothHandPosture(hand, now);
+        hand.motion = updateMotionHistory(hand, now);
+      });
+      lastRenderedHands = currentHands;
+      updateTrackingChips();
+      const pointer = choosePointerHand(currentHands, now);
+      monitorPauseTriggers(currentHands, pointer, now);
+      if (state === "paused") return;
+
+      const tips = getSelectionTips(currentHands, now);
+      if (updateSelectionFromTips(tips, now)) return;
+      if (currentHands.filter(isPointingIndex).length >= 2 && twoHandCandidate.since) return;
+
+      if (pointer && isPointingIndex(pointer)) {
+        const trace = updatePointerTrace(pointer.tip.x, pointer.tip.y, now);
+        handlePointerWord(trace, now);
+      } else {
+        handlePointerWord(null, now);
+      }
+    }
+
+    function prepareHandInputFrame() {
+      const sw = video.videoWidth || 1280;
+      const sh = video.videoHeight || 720;
+      const scale = Math.min(1, 960 / Math.max(sw, sh));
+      const tw = Math.max(1, Math.round(sw * scale));
+      const th = Math.max(1, Math.round(sh * scale));
+      if (handInputCanvas.width !== tw || handInputCanvas.height !== th) {
+        handInputCanvas.width = tw;
+        handInputCanvas.height = th;
+      }
+      handInputCtx.drawImage(video, 0, 0, tw, th);
+      return handInputCanvas;
+    }
+
+    async function detectLoop() {
+      if (!detectionLoopStarted) return;
+      if (sessionMode === "camera" && trackingReady && handsModel && !detectBusy && video.readyState >= 2) {
+        detectBusy = true;
+        const start = performance.now();
+        try {
+          await handsModel.send({ image: prepareHandInputFrame() });
+          const fps = 1000 / Math.max(1, performance.now() - start);
+          smoothedFps = smoothedFps ? smoothedFps * 0.8 + fps * 0.2 : fps;
+          updateTrackingChips();
+        } catch (error) {
+          if (!handsModel.errorShown) {
+            handsModel.errorShown = true;
+            showToast(`手部追踪错误：${error.message || "未知错误"}`, "error");
+          }
+        } finally {
+          detectBusy = false;
+        }
+      }
+      requestAnimationFrame(detectLoop);
+    }
+
+    async function initializeHands() {
+      if (typeof window.Hands !== "function") throw new Error("MediaPipe Hands CDN 未加载");
+      handsModel = new window.Hands({
+        locateFile: (file) =>
+          `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+      });
+      handsModel.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 0,
+        minDetectionConfidence: 0.42,
+        minTrackingConfidence: 0.35
+      });
+      handsModel.onResults(onHandResults);
+      trackingReady = true;
+      detectionLoopStarted = true;
+      detectLoop();
+    }
+
+    function updateTrackingChips() {
+      fpsText.textContent = `${Math.round(smoothedFps)} FPS`;
+      handCountText.textContent = `手：${currentHands.length}`;
+    }
+
+    async function startCameraSession() {
+      if (!mapLoaded) {
+        showToast("请先上传文字地图 JSON", "warn");
+        bootStatus.textContent = "请先上传包含 lines 的文字地图 JSON。";
+        return;
+      }
+      startButton.disabled = true;
+      bootStatus.textContent = "正在请求摄像头权限…";
+      try {
+        initAudio();
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30, max: 30 }
+          }
+        });
+        video.srcObject = stream;
+        await video.play();
+        const settings = stream.getVideoTracks()[0]?.getSettings?.() || {};
+        isMirrored = settings.facingMode === "user" || !settings.facingMode;
+        video.classList.toggle("mirrored", isMirrored);
+        sessionMode = "camera";
+        sessionActive = true;
+        cameraChip.classList.add("online");
+        cameraChipText.textContent = "摄像头在线";
+        await initializeHands();
+        bootOverlay.classList.add("hidden");
+        setState("idle", "摄像头就绪：沿上传文字地图滑动食指。");
+        showToast("摄像头与 JSON 词级追踪已启动");
+      } catch (error) {
+        stopCamera();
+        sessionActive = false;
+        sessionMode = "inactive";
+        cameraChip.classList.remove("online");
+        cameraChipText.textContent = "启动失败";
+        bootStatus.textContent = `启动失败：${error.message || error}。可使用鼠标演示。`;
+        setState("idle", "摄像头启动失败。");
+        startButton.disabled = false;
+      }
+    }
+
+    function stopCamera() {
+      trackingReady = false;
+      detectionLoopStarted = false;
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+        stream = null;
+      }
+      video.srcObject = null;
+      currentHands = [];
+      lastRenderedHands = [];
+      motionHistories.clear();
+      postureFilters.clear();
+      twoHandCandidate.since = 0;
+      twoHandCandidate.lastSeenAt = 0;
+      twoHandCandidate.tips = null;
+      forcedLineId = null;
+      takeoverOriginY = null;
+      takeoverRearmRequired = false;
+      activeLineId = null;
+      lineCandidate = null;
+      lineEndSignaledLineId = null;
+      resetPauseRecovery();
+    }
+
+    function enterDemoMode() {
+      if (!mapLoaded) {
+        showToast("请先上传文字地图 JSON", "warn");
+        bootStatus.textContent = "请先上传包含 lines 的文字地图 JSON。";
+        return;
+      }
+      stopCamera();
+      activeLineId = null;
+      initAudio();
+      sessionMode = "demo";
+      sessionActive = true;
+      document.body.classList.add("demo-mode");
+      bootOverlay.classList.add("hidden");
+      cameraChip.classList.remove("online");
+      cameraChipText.textContent = "鼠标演示";
+      setState("idle", "移动鼠标模拟食指；Shift + 拖拽模拟双手框选。");
+      showToast("已进入鼠标演示");
+    }
+
+    // -------------------------------------------------------------------------
+    // Canvas rendering and demo input
+    // -------------------------------------------------------------------------
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(window.innerWidth * dpr);
+      canvas.height = Math.round(window.innerHeight * dpr);
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function drawHand(hand) {
+      const color = state === "paused"
+        ? "rgba(255, 141, 123, 0.52)"
+        : state === "selecting" || state === "takeover"
+          ? "rgba(255, 200, 97, 0.95)"
+          : hand.role === "pointer"
+            ? "rgba(91, 244, 168, 0.96)"
+            : "rgba(198, 218, 207, 0.38)";
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = hand.role === "book" ? 1.1 : 1.9;
+      ctx.shadowColor = hand.role === "pointer" ? "rgba(91, 244, 168, 0.42)" : "transparent";
+      ctx.shadowBlur = hand.role === "pointer" ? 7 : 0;
+      HAND_CONNECTIONS.forEach(([start, end]) => {
+        ctx.beginPath();
+        ctx.moveTo(hand.points[start].x, hand.points[start].y);
+        ctx.lineTo(hand.points[end].x, hand.points[end].y);
+        ctx.stroke();
+      });
+      hand.points.forEach((point, index) => {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, index === 8 ? 4.2 : 2, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
+    function drawWordBox(word, color, dashed = false) {
+      if (!word) return;
+      const topLeft = mapToScreen(word.x, word.y);
+      const width = word.width * displayScale;
+      const height = word.height * displayScale;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = dashed ? 1.3 : 1.8;
+      ctx.setLineDash(dashed ? [5, 4] : []);
+      ctx.strokeRect(topLeft.x, topLeft.y, width, height);
+      ctx.restore();
+    }
+
+    function drawPointer(x, y, now) {
+      const phase = (now / 850) % 1;
+      ctx.save();
+      ctx.strokeStyle = "rgba(91, 244, 168, 0.5)";
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.arc(x, y, 8 + phase * 16, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(91, 244, 168, 0.96)";
+      ctx.shadowColor = "rgba(91, 244, 168, 0.8)";
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(x, y, 3.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawSelection(rect, active) {
+      if (!rect) return;
+      const color = active ? "rgba(255, 200, 97, 0.96)" : "rgba(91, 244, 168, 0.9)";
+      ctx.save();
+      ctx.fillStyle = active ? "rgba(255, 200, 97, 0.11)" : "rgba(91, 244, 168, 0.07)";
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+      ctx.strokeStyle = color;
+      ctx.setLineDash(active ? [7, 5] : []);
+      ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.width, rect.height);
+      ctx.restore();
+    }
+
+    function renderLoop(now) {
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      if (hoverWord && hoverWord !== activeWord) drawWordBox(hoverWord, "rgba(91, 244, 168, 0.88)", true);
+      if (activeWord) drawWordBox(activeWord, "rgba(255, 200, 97, 0.98)", false);
+      lastRenderedHands.forEach(drawHand);
+      const pointer = lastRenderedHands.find((hand) => hand.role === "pointer");
+      if (pointer && state !== "paused" && !selection.active) drawPointer(pointer.tip.x, pointer.tip.y, now);
+      if (selection.active) drawSelection(normalizeRect(selection.tipA, selection.tipB), true);
+      else if (lastSelection && now < lastSelection.expiresAt) drawSelection(lastSelection.rect, false);
+      if (demo.drag) {
+        drawSelection(normalizeRect(
+          { x: demo.drag.startX, y: demo.drag.startY },
+          { x: demo.drag.currentX, y: demo.drag.currentY }
+        ), true);
+      }
+      requestAnimationFrame(renderLoop);
+    }
+
+    function processDemoPointer(event) {
+      if (sessionMode !== "demo") return;
+      demo.present = true;
+      demo.x = event.clientX;
+      demo.y = event.clientY;
+      noHandSince = null;
+      if (state === "paused") {
+        attemptResume({ tip: { x: demo.x, y: demo.y }, fingers: { index: true }, key: "demo" }, performance.now());
+        return;
+      }
+      if (demo.drag || state === "selecting") return;
+      const now = performance.now();
+      const trace = updatePointerTrace(demo.x, demo.y, now);
+      handlePointerWord(trace, now);
+    }
+
+    canvas.addEventListener("pointerenter", (event) => {
+      if (sessionMode === "demo") processDemoPointer(event);
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (sessionMode !== "demo") return;
+      if (demo.drag) {
+        demo.drag.currentX = event.clientX;
+        demo.drag.currentY = event.clientY;
+        setState("selecting", "拖动调整选区。");
+        return;
+      }
+      processDemoPointer(event);
+    });
+    canvas.addEventListener("pointerdown", (event) => {
+      if (sessionMode !== "demo" || state === "paused" || !event.shiftKey) return;
+      event.preventDefault();
+      try { canvas.setPointerCapture?.(event.pointerId); } catch (error) {}
+      demo.drag = {
+        startX: event.clientX,
+        startY: event.clientY,
+        currentX: event.clientX,
+        currentY: event.clientY
+      };
+      clearHighlightedElements();
+      setState("selecting", "拖动调整选区。");
+    });
+    canvas.addEventListener("pointerup", (event) => {
+      if (sessionMode !== "demo" || !demo.drag) return;
+      const rect = normalizeRect(
+        { x: demo.drag.startX, y: demo.drag.startY },
+        { x: demo.drag.currentX, y: demo.drag.currentY }
+      );
+      demo.drag = null;
+      selection.cooldownUntil = performance.now() + LINE_SWITCH_DEBOUNCE_MS * 2;
+      commitSelectionRect(rect);
+      try { canvas.releasePointerCapture?.(event.pointerId); } catch (error) {}
+    });
+    canvas.addEventListener("pointerleave", () => {
+      if (sessionMode !== "demo" || demo.drag) return;
+      demo.present = false;
+      if (noHandSince === null) noHandSince = performance.now();
+      setHoverWord(null);
+    });
+
+    function demoTick() {
+      if (sessionMode !== "demo" || !mapLoaded || !sessionActive) return;
+      const now = performance.now();
+      if (!demo.present) {
+        if (noHandSince !== null && now - noHandSince >= 1000 && state !== "paused") {
+          triggerPause("noHand");
+        }
+        return;
+      }
+      if (state !== "paused" && state !== "selecting" && !demo.drag) {
+        const trace = updatePointerTrace(demo.x, demo.y, now);
+        handlePointerWord(trace, now);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Controls and initialization
+    // -------------------------------------------------------------------------
+    function openFilePicker() {
+      jsonFileInput.value = "";
+      jsonFileInput.click();
+    }
+
+    uploadTopButton.addEventListener("click", openFilePicker);
+    uploadBootButton.addEventListener("click", openFilePicker);
+    jsonFileInput.addEventListener("change", () => {
+      const file = jsonFileInput.files?.[0];
+      if (file) loadJsonFile(file);
+    });
+    startButton.addEventListener("click", startCameraSession);
+    demoButton.addEventListener("click", enterDemoMode);
+    soundButton.addEventListener("click", () => {
+      initAudio();
+      soundEnabled = !soundEnabled;
+      soundButton.classList.toggle("active", soundEnabled);
+      soundButton.setAttribute("aria-label", soundEnabled ? "关闭音效" : "开启音效");
+      if (soundEnabled) playSoundStart();
+    });
+    boxButton.addEventListener("click", () => {
+      const visible = document.body.classList.toggle("show-boxes");
+      boxButton.classList.toggle("active", visible);
+      boxButton.setAttribute("aria-label", visible ? "隐藏文字框" : "显示文字框");
+    });
+    pauseButton.addEventListener("click", () => {
+      if (!sessionActive) {
+        showToast("请先启动摄像头或鼠标演示", "warn");
+        return;
+      }
+      if (state === "paused") showToast("移动单指以恢复", "warn");
+      else triggerPause("manual");
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key.toLowerCase() === "p" && sessionActive && state !== "paused") {
+        triggerPause("manual");
+      }
+    });
+    window.addEventListener("resize", () => {
+      resizeCanvas();
+      renderMapLayout();
+    });
+    window.addEventListener("orientationchange", () => {
+      resizeCanvas();
+      renderMapLayout();
+    });
+    window.addEventListener("beforeunload", stopCamera);
+
+    resizeCanvas();
+    requestAnimationFrame(renderLoop);
+    setInterval(demoTick, LINE_SWITCH_DEBOUNCE_MS);
+    setInterval(() => sampleCenterBrightness(performance.now()), LINE_SWITCH_DEBOUNCE_MS);
+    renderGestureHistory();
+    resetReadingUi();
+  </script>
+</body>
+</html>
