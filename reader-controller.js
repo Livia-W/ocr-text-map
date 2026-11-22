@@ -87,7 +87,11 @@
       this.urls = new Set();
       this.tracking = new Map();
       this.gesturesEnabled = false;
-      this.gestureStatus = "纸面手势需要相机采集的参考页和有效跟踪。";
+      this.gestureStatus = "开启实时手势可查看手骨架；识别书页后可进行纸面点读。";
+      this.gestureHands = 0;
+      this.gestureFPS = 0;
+      this.gestureModelReady = false;
+      this.gestureError = "";
       this.gesture = null;
       this.gestureToken = 0;
       this.gestureMappedKey = null;
@@ -108,7 +112,7 @@
         if (frame.type === "state" && ["stopped", "background", "reference-changing", "tracking-error"].some(s => String(frame.state).startsWith(s))) {
           this.tracking.clear();
           this.syncGestureMap();
-          if (["stopped", "background"].includes(frame.state)) this.pause();
+          if (["stopped", "background"].includes(frame.state)) { this.pause(); this.setGesturesEnabled(false); }
           this.emit();
         }
       });
@@ -118,7 +122,7 @@
         if (ready !== this.lastTrackingReady) { this.lastTrackingReady = ready; this.syncGestureMap(); this.emit(); }
       }, 200);
       this.trackingTimer?.unref?.();
-      this.onBackground = () => { if (global.document?.hidden) { this.tracking.clear(); this.pause(); this.syncGestureMap(); } };
+      this.onBackground = () => { if (global.document?.hidden) { this.tracking.clear(); this.pause(); this.setGesturesEnabled(false); } };
       global.document?.addEventListener("visibilitychange", this.onBackground);
       this.onKeys = event => {
         const tag = event.target?.tagName?.toLowerCase();
@@ -140,7 +144,9 @@
         pages: this.pages.map(p => ({ key: p.key, label: p.label, map: p.map, sourceUrl: p.sourceUrl })),
         activePageKey: this.activePageKey, activeMap: page?.map || null, activeImageUrl: page?.sourceUrl || "",
         trackingReady: !!this.activeTracking(), gesturesEnabled: this.gesturesEnabled,
-        gestureStatus: this.gestureStatus, reading: this.reader?.getState?.() || {},
+        gestureStatus: this.gestureStatus, gestureHands: this.gestureHands, gestureFPS: this.gestureFPS,
+        gestureModelReady: this.gestureModelReady, gestureError: this.gestureError,
+        reading: this.reader?.getState?.() || {},
         highlights: this.reader?.getHighlights?.() || this.reader?.highlights || [],
         history: this.reader?.getHistory?.() || this.reader?.history || [] };
     }
@@ -378,7 +384,7 @@
       if (!ready) {
         if (this.gestureMappedKey) this.gesture.clearTextMap();
         this.gestureMappedKey = null; this.clearWords();
-        this.gestureStatus = page?.reference ? "参考页跟踪暂不可用，请将书页保持在画面内。" : "照片模式可点击朗读；纸面手势需要重新采集参考页。";
+        this.gestureStatus = page?.reference ? "手势识别已开启；书页跟踪暂不可用，点读等待恢复。" : "手势识别已开启，可查看手骨架；拍摄并识别书页后可纸面点读。";
         return;
       }
       if (this.gestureMappedKey !== page.key) {
@@ -396,12 +402,20 @@
       if (!enabled) {
         const gesture = this.gesture; this.gesture = null;
         this.gesturesEnabled = false; this.gestureMappedKey = null; this.clearWords();
+        this.gestureHands = 0; this.gestureFPS = 0; this.gestureModelReady = false; this.gestureError = "";
         this.bookReader?.setHandOccluded?.(false);
         gesture?.destroy();
         this.gestureStatus = "手势已关闭。"; this.emit(); return;
       }
       if (this.gesture) { this.gesturesEnabled = true; this.emit(); return; }
-      const video = this.bookReader?.getVideoElement?.();
+      this.gestureError = "";
+      let video = this.bookReader?.getVideoElement?.();
+      if ((!video?.srcObject || !video.videoWidth) && this.bookReader?.startCamera) {
+        this.gestureStatus = "正在开启相机…"; this.emit();
+        await this.bookReader.startCamera();
+        if (token !== this.gestureToken || this.destroyed) return;
+        video = this.bookReader.getVideoElement();
+      }
       if (!video?.srcObject || !video.videoWidth) throw new Error("请先开启相机，再启用纸面手势。");
       if (typeof global.GestureEngine !== "function" || typeof global.Hands !== "function") throw new Error("手势运行资源未加载，请刷新页面重试。");
       this.gestureStatus = "正在加载手势模型…"; this.emit();
@@ -422,17 +436,33 @@
           const text = (this.activePage()?.map.lines || []).filter(line => selected.has(line.id)).map(line => line.text).join("\n");
           if (text) this.reader.onSelectRegion(text, [...selected]);
         },
-        onHandUpdate: event => this.bookReader?.setHandOccluded?.(Array.isArray(event.hands) && event.hands.length > 0)
+        onHandUpdate: event => {
+          if (this.gesture !== gesture || token !== this.gestureToken) return;
+          this.gestureHands = Array.isArray(event.hands) ? event.hands.length : 0;
+          this.gestureFPS = Number.isFinite(event.fps) ? Math.max(0, event.fps) : 0;
+          this.bookReader?.setHandOccluded?.(this.gestureHands > 0);
+          if (this.now() - (this.lastHandEmit ?? -Infinity) >= 100) { this.lastHandEmit = this.now(); this.emit(); }
+        },
+        onError: error => {
+          if (this.gesture !== gesture || token !== this.gestureToken) return;
+          this.setGesturesEnabled(false);
+          this.gestureError = error?.message || String(error);
+          this.gestureStatus = `手势识别失败：${this.gestureError}。请重新开启重试。`;
+          this.emit();
+        }
       });
       this.gesture = gesture;
       try {
         await gesture.init();
         if (token !== this.gestureToken || this.destroyed) { gesture.destroy(); return; }
-        this.gesturesEnabled = true; this.syncGestureMap(); this.emit();
+        this.gesturesEnabled = true; this.gestureModelReady = true; this.syncGestureMap(); this.emit();
       } catch (error) {
         gesture.destroy();
         if (this.gesture === gesture) this.gesture = null;
-        this.gesturesEnabled = false; this.gestureStatus = `手势启动失败：${error.message}`; this.emit(); throw error;
+        if (token !== this.gestureToken || this.destroyed) return;
+        this.gesturesEnabled = false; this.gestureModelReady = false;
+        this.gestureError = error?.message || String(error);
+        this.gestureStatus = `手势启动失败：${this.gestureError}`; this.emit(); throw error;
       }
     }
 

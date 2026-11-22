@@ -89,7 +89,7 @@ class ReadingStub {
   getHistory() { return []; }
 }
 
-function harness(t, { immediate = false, fetch: fetchOverride } = {}) {
+function harness(t, { immediate = false, fetch: fetchOverride, initGesture } = {}) {
   const clock = new Clock(), events = new EventHub(), docEvents = new EventHub();
   const reading = new ReadingStub();
   const video = {
@@ -106,7 +106,7 @@ function harness(t, { immediate = false, fetch: fetchOverride } = {}) {
   };
   class GestureStub {
     constructor(givenVideo, options) { assert.equal(givenVideo, video); this.options = options; this.maps = []; this.clears = 0; gestures.push(this); }
-    async init() {}
+    async init() { if (initGesture) await initGesture(this); }
     setTextMap(value) { this.maps.push(value); }
     clearTextMap() { this.clears += 1; }
     destroy() { this.destroyed = true; }
@@ -147,7 +147,7 @@ function harness(t, { immediate = false, fetch: fetchOverride } = {}) {
     readingManager: reading, fetch: fetchOverride || (async () => { throw new Error("Unexpected network call"); }), now: () => clock.time });
   t.after(() => controller.destroy());
   return {
-    controller, Controller: context.FeelyReaderController, clock, reading, video, jobs, gestures, handSignals, urls,
+    controller, Controller: context.FeelyReaderController, clock, reading, video, jobs, gestures, handSignals, urls, bookReader,
     get maxInFlight() { return maxInFlight; },
     capture(count, ids = [7], texts = [], { automatic = false } = {}) {
       const pages = ids.map((pageId, index) => ({ pageId, label: `书页 ${index + 1}`, width: 200, height: 100, blob: photo("jpeg", texts[index] || `内容-${count}-${index}`) }));
@@ -377,4 +377,59 @@ test("cancel keeps the finished map while stopping playback and blocking fresh C
   h.gestures[0].options.onWordFocus({ word: "不应重启", lineId: "line-1" });
   await h.clock.advance(110);
   assert(!h.reading.calls.some(call => call[0] === "tap" || call[0] === "slide"));
+});
+
+test("live hand detection starts without an OCR map and exposes count and FPS", async t => {
+  const h = harness(t);
+  await h.controller.setGesturesEnabled(true);
+  const gesture = h.gestures[0];
+  assert.equal(h.controller.getState().trackingReady, false);
+  assert.equal(h.controller.getState().gestureModelReady, true);
+  gesture.options.onHandUpdate({ hands: [{}, {}], fps: 17.5 });
+  const state = h.controller.getState();
+  assert.equal(state.gestureHands, 2); assert.equal(state.gestureFPS, 17.5);
+  assert.equal(h.handSignals.at(-1), true);
+  gesture.options.onWordFocus({ word: "没有参考页不能朗读", lineId: "missing" });
+  await h.clock.advance(110);
+  assert(!h.reading.calls.some(call => ["tap", "slide"].includes(call[0])));
+});
+
+test("enabling gestures can start the shared A camera automatically", async t => {
+  const h = harness(t);
+  h.video.srcObject = null; h.video.videoWidth = 0;
+  let starts = 0;
+  h.bookReader.startCamera = async () => { starts++; h.video.srcObject = {}; h.video.videoWidth = 640; };
+  await h.controller.setGesturesEnabled(true);
+  assert.equal(starts, 1); assert.equal(h.controller.getState().gesturesEnabled, true);
+});
+
+test("gesture status waits for model readiness and camera stop discards late hand callbacks", async t => {
+  let ready;
+  const h = harness(t, { initGesture: () => new Promise(resolve => { ready = resolve; }) });
+  const starting = h.controller.setGesturesEnabled(true);
+  assert.equal(h.controller.getState().gesturesEnabled, false);
+  assert.equal(h.controller.getState().gestureModelReady, false);
+  ready(); await starting;
+  const gesture = h.gestures[0]; gesture.options.onHandUpdate({ hands: [{}], fps: 10 });
+  h.frame("stopped");
+  assert.equal(gesture.destroyed, true);
+  gesture.options.onHandUpdate({ hands: [{}, {}], fps: 20 });
+  assert.equal(h.controller.getState().gesturesEnabled, false);
+  assert.equal(h.controller.getState().gestureHands, 0);
+  assert.equal(h.controller.getState().gestureFPS, 0);
+  assert.equal(h.handSignals.at(-1), false);
+});
+
+test("runtime model failures are visible and permit restarting hand detection", async t => {
+  const h = harness(t);
+  await h.controller.setGesturesEnabled(true);
+  h.gestures[0].options.onError(new Error("模型资源下载失败"));
+  const state = h.controller.getState();
+  assert.equal(state.gesturesEnabled, false);
+  assert.equal(state.gestureModelReady, false);
+  assert.match(state.gestureError, /模型资源下载失败/);
+  assert.match(state.gestureStatus, /失败/);
+  await h.controller.setGesturesEnabled(true);
+  assert.equal(h.controller.getState().gesturesEnabled, true);
+  assert.equal(h.controller.getState().gestureError, "");
 });

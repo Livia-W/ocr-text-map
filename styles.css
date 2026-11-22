@@ -23,6 +23,12 @@ h2 { font-size: 19px; font-weight: 500; }
 #message { font-size: 14px; line-height: 1.6; margin: 14px 4px; min-height: 23px; overflow-wrap: anywhere; }
 #message.error { color: #a63628; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.gesture-controls { margin: 16px 0; border: 1px solid #cbd9c1; border-radius: 12px; padding: 8px 12px 12px; background: #f5f8f1; }
+.gesture-controls .auto-control { font-size: 15px; font-weight: 650; padding: 4px 0; }
+.gesture-controls .hint { margin: 8px 0; overflow-wrap: anywhere; }
+.gesture-telemetry { margin: 8px 0; font-size: 13px; color: #31563e; font-variant-numeric: tabular-nums; }
+.gesture-controls .gesture-workspace-link { display: flex; width: 100%; min-height: 42px; margin-top: 12px; padding: 10px 12px; font-size: 13px; }
+#reader-gesture-status.error { color: #a63628; }
 button, .button { flex: 1 1 140px; display: inline-flex; justify-content: center; align-items: center; min-height: 54px; border: 0; border-radius: 10px; padding: 14px 18px; font: inherit; font-size: 16px; font-weight: 600; text-decoration: none; cursor: pointer; touch-action: manipulation; }
 .primary { background: #31563e; color: #fff; }
 .secondary { background: #eaf0e6; color: #31563e; }

@@ -20,7 +20,7 @@ python -m scripts.build_web --output dist/web
 
 产物包含整合 HTML/CSS/JS、运行所需 `vendor/`、第三方说明 `THIRD_PARTY.md`、`.nojekyll` 和 `manifest.json`。清单记录版本及各文件的相对路径、字节数和 SHA-256；单个静态文件必须小于 100 MiB。
 
-白名单不复制 `CNAME`、Python 后端、测试、旧演示入口、个人照片、`outputs/`、`.venv`、`.git` 或本机凭据目录。默认部署不依赖自定义域名。旧 `app原型` 分支中的 `CNAME` 不代表域名已注册；不要据此在 Pages 中填写自定义域名。
+白名单包括 C 独立测试页 `blind-book-ocr-json-test.html` 和共享入口 `gesture-test.js`，不复制 `CNAME`、Python 后端、测试、其它旧演示、个人照片、`outputs/`、`.venv`、`.git` 或本机凭据目录。默认部署不依赖自定义域名。旧 `app原型` 分支中的 `CNAME` 不代表域名已注册；不要据此在 Pages 中填写自定义域名。
 
 ## 2. GitHub Pages 设置
 

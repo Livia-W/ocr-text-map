@@ -170,6 +170,10 @@ Python 曲面展开时 `curvature_mesh` 为单调纵向逆映射，回映步骤�
 
 ### 接入 C
 
+手部检测与文字坐标可用性分开处理：未获得 OCR 或书页跟踪时仍显示实时骨架、手数与 FPS；字词命中、文字框和选区只在参考坐标有效时启用。开启实时手势可调用 `BookReader.startCamera()` 复用 A 相机，模型完成初始化后才报告已就绪；停止相机或进入后台会销毁手势实例。模型运行错误通过 `gestureError/gestureStatus` 显示，不能只记录到控制台。
+
+`blind-book-ocr-json-test.html` 是可独立发布的 C 固定版式工作台，使用同一个 `gesture-engine.js`；可先启动相机，再导入地图，也支持鼠标测试。它按显示版式测试 JSON，不能把它的成功视为纸页移动跟踪成功。
+
 整合控制器把 C 的文字地图统一到 A 参考坐标：使用 B 的 `bbox_source/polygon_source`，地图尺寸设为 B `source_size`。手指从视频归一化位置转为 `currentVideo` 像素，经 A `currentVideoToReference` 映射到参考图；反向画框使用 `referenceToCurrentVideo`，再换成屏幕坐标。
 
 因此无需把 B 非线性变换再次叠加到已经回映的 `polygon_source` 上。若自行改用 B 的 `rectified` 图作为 C 地图，则必须同时实现曲面、透视、裁剪与视频跟踪的完整链。C 的词位置是行内估算，不能称为模型测得的逐字坐标。

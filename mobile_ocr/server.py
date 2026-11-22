@@ -25,6 +25,7 @@ WEB_ASSETS = {
     "index.html", "styles.css", "app.js", "camera.js", "opencv-loader.js",
     "page-detector.js", "page-output.js", "page-content.js", "stability.js", "live-bridge.js",
     "gesture-engine.js", "reading_manager.js", "browser-ocr.js", "reader-controller.js", "e-app.js",
+    "blind-book-ocr-json-test.html", "gesture-test.js",
 }
 ACCEPTED_CONTENT_TYPES = {
     "image/jpeg", "image/png", "image/webp", "application/octet-stream", "",

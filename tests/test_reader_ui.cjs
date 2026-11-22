@@ -237,6 +237,58 @@ async function testJsonImportRace() {
   assert(!app.node("status").classes.has("error"), "Stale parse errors must not overwrite current status");
 }
 
+async function testLiveGestureStatusWithoutOcrAndStartupErrors() {
+  const app = browser();
+  assert.equal(app.node("hand-status").textContent, "手势识别未开启");
+  app.reader.emit({ gesturesEnabled: true, gestureModelReady: true, gestureHands: 2, gestureFPS: 15.125 });
+  assert.equal(app.node("hand-status").textContent, "检测到 2 只手 · 15.1 帧/秒");
+  assert.match(app.node("gesture-status").textContent, /手骨架/);
+  assert.equal(app.node("gestures").checked, true);
+  assert.equal(app.node("play").disabled, true, "Live hand status must not require an OCR map");
+  app.reader.emit({ gestureError: "<img src=x onerror=bad()>", gestureStatus: "", gesturesEnabled: false, gestureModelReady: false });
+  assert.match(app.node("gesture-status").textContent, /<img src=x onerror=bad\(\)>/);
+  assert.equal(app.node("gesture-status").attributes.role, "alert");
+  assert(app.node("gesture-status").classes.has("error"));
+  app.reader.emit({ gestureError: "", gestureStatus: "手势已关闭。" });
+  assert.equal(app.node("gesture-status").attributes.role, "status");
+  assert(!app.node("gesture-status").classes.has("error"));
+
+  let rejectStart;
+  app.reader.setGesturesEnabled = () => new Promise((resolve, reject) => {
+    rejectStart = reject;
+    app.reader.emit({ gestureStatus: "正在开启相机…" });
+  });
+  app.node("gestures").checked = true;
+  const pending = app.node("gestures").handlers.change();
+  await settle();
+  assert.equal(app.node("gestures").disabled, true, "Do not start a second model while startup is pending");
+  assert.equal(app.node("gestures").checked, true, "Keep the requested on state while the model is loading");
+  rejectStart(new Error("请允许相机权限"));
+  await pending;
+  assert.equal(app.node("gestures").disabled, false);
+  assert.equal(app.node("gestures").checked, false);
+  assert.equal(app.node("gesture-status").textContent, "请允许相机权限");
+  assert.equal(app.node("gesture-status").attributes.role, "alert");
+
+  let resolveStart;
+  app.reader.setGesturesEnabled = () => new Promise(resolve => {
+    resolveStart = () => {
+      app.reader.emit({ gesturesEnabled: true, gestureModelReady: true });
+      resolve();
+    };
+    app.reader.emit({ gesturesEnabled: false, gestureStatus: "正在加载手势识别…" });
+  });
+  app.node("gestures").checked = true;
+  const successful = app.node("gestures").handlers.change();
+  await settle();
+  assert.equal(app.node("gestures").checked, true);
+  assert.equal(app.node("gestures").disabled, true);
+  resolveStart();
+  await successful;
+  assert.equal(app.node("gestures").checked, true, "Successful startup must reflect the enabled controller state");
+  assert.equal(app.node("gestures").disabled, false);
+}
+
 function testPreservedCaptureDomAndScripts() {
   const html = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
   const capture = fs.readFileSync(path.join(__dirname, "../app.js"), "utf8");
@@ -244,6 +296,15 @@ function testPreservedCaptureDomAndScripts() {
   assert.equal(new Set(htmlIds).size, htmlIds.length, "DOM IDs must be unique");
   for (const match of capture.matchAll(/\$\('([^']+)'\)/g)) assert(htmlIds.includes(match[1]), `A requires #${match[1]}`);
   assert(htmlIds.includes("gesture-overlay"));
+  const captureSection = html.slice(html.indexOf('id="capture-panel"'), html.indexOf('id="reader-panel"'));
+  assert(captureSection.includes('id="reader-gestures"'), "The live gesture toggle must be beside the shared camera");
+  assert(captureSection.includes('id="reader-hand-status"'));
+  assert(captureSection.includes('id="reader-gesture-status"'));
+  assert.match(captureSection, /href="blind-book-ocr-json-test\.html"[^>]*>打开 C 模块手势工作台<\/a>/);
+  assert.match(captureSection, /未识别书页时也显示手骨架/);
+  for (const asset of ["styles.css", "app.js", "live-bridge.js", "gesture-engine.js", "reader-controller.js", "e-app.js"]) {
+    assert(html.includes(`${asset}?v=20261122`), `Invalidate the old cached ${asset}`);
+  }
   assert(html.indexOf("FEELYREADER_NO_AUTO_TTS") < html.indexOf('src="reading_manager.js'));
   const scripts = ["app.js?", "reading_manager.js?", "gesture-engine.js?", "browser-ocr.js?", "reader-controller.js?", "e-app.js?"];
   for (let i = 1; i < scripts.length; i += 1) assert(html.indexOf(scripts[i - 1]) < html.indexOf(scripts[i]), "Module script order must preserve dependencies");
@@ -254,6 +315,7 @@ function testPreservedCaptureDomAndScripts() {
   await testMapSpeechAndSafeSavedText();
   await testInputLimitsAndDecodeRace();
   await testJsonImportRace();
+  await testLiveGestureStatusWithoutOcrAndStartupErrors();
   testPreservedCaptureDomAndScripts();
-  console.log("PASS: E photo/config flow, busy guard, map clicks, reading controls, safe saved text, input limits/races, A DOM and script order");
+  console.log("PASS: E photo/config flow, live gesture entry/status/errors without OCR, busy guards, map clicks, reading controls, safe saved text, input limits/races, A DOM and script order");
 })().catch(error => { console.error(error); process.exitCode = 1; });

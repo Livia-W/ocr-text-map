@@ -305,6 +305,10 @@
       };
       global.addEventListener?.("resize", this.resizeHandler);
       this.resizeCanvas();
+      if (this.canvas && typeof global.ResizeObserver === "function") {
+        this.resizeObserver = new global.ResizeObserver(this.resizeHandler);
+        this.resizeObserver.observe(this.canvas);
+      }
     }
 
     async init(options = {}) {
@@ -329,6 +333,8 @@
           }
           await this.initializeHands();
         }
+        if (this.destroyed) throw new DOMException("手势启动已取消", "AbortError");
+        this.resizeCanvas();
         this.initialized = true;
         this.destroyed = false;
         this.detectionFrame = requestAnimationFrame(() => this.detectLoop());
@@ -449,6 +455,9 @@
         minTrackingConfidence: 0.35
       });
       this.handsModel.onResults((results) => this.handleHandResults(results));
+      // MediaPipe otherwise loads WASM/models lazily during the first send(),
+      // after the interface has already reported a successful start.
+      if (typeof this.handsModel.initialize === "function") await this.handsModel.initialize();
     }
 
     setCallbacks(callbacks = {}) {
@@ -1695,7 +1704,22 @@
         this.detectBusy = true;
         const startedAt = performance.now();
         try {
-          await this.handsModel.send({ image: this.video });
+          let image = this.video;
+          const width = this.video.videoWidth, height = this.video.videoHeight;
+          if (Math.max(width, height) > 960) {
+            // Preserve A's full-resolution capture stream. C only needs a
+            // smaller inference frame; landmarks remain normalized to 0..1.
+            this.inferenceCanvas ||= document.createElement("canvas");
+            const scale = 960 / Math.max(width, height);
+            const outputWidth = Math.max(1, Math.round(width * scale));
+            const outputHeight = Math.max(1, Math.round(height * scale));
+            if (this.inferenceCanvas.width !== outputWidth || this.inferenceCanvas.height !== outputHeight) {
+              this.inferenceCanvas.width = outputWidth; this.inferenceCanvas.height = outputHeight;
+            }
+            this.inferenceCanvas.getContext("2d").drawImage(this.video, 0, 0, outputWidth, outputHeight);
+            image = this.inferenceCanvas;
+          }
+          await this.handsModel.send({ image });
           const fps = 1000 / Math.max(1, performance.now() - startedAt);
           this.fps = this.fps ? this.fps * 0.8 + fps * 0.2 : fps;
           this.onHandUpdate({
@@ -1704,18 +1728,22 @@
             hands: this.hands
           });
         } catch (error) {
+          this.initialized = false;
+          this.hands = [];
+          this.fps = 0;
+          this.onHandUpdate({ count: 0, fps: 0, hands: [] });
           this.handleError(error);
         } finally {
           this.detectBusy = false;
         }
       }
-      if (!this.destroyed) {
+      if (!this.destroyed && this.initialized) {
         this.detectionFrame = requestAnimationFrame(() => this.detectLoop());
       }
     }
 
     drawHand(hand) {
-      if (!this.ctx || !this.isCoordinateMappingValid()) return;
+      if (!this.ctx) return;
       const bounds = this.canvas.getBoundingClientRect();
       const points = hand.points.map(point => finitePoint(point)
         ? { x: point.x - bounds.left, y: point.y - bounds.top } : null);
@@ -1801,6 +1829,9 @@
       if (!this.ctx) return;
       const rect = this.canvas.getBoundingClientRect();
       this.ctx.clearRect(0, 0, rect.width, rect.height);
+      // Hand landmarks live in video/screen coordinates, independently of the
+      // OCR reference. Only text hit testing and word overlays need tracking.
+      this.hands.forEach((hand) => this.drawHand(hand));
       if (!this.isCoordinateMappingValid()) return;
       if (this.hoverWord && this.hoverWord !== this.activeWord) {
         this.drawWordBox(this.hoverWord, "rgba(90, 244, 168, 0.86)", true);
@@ -1808,7 +1839,6 @@
       if (this.activeWord) {
         this.drawWordBox(this.activeWord, "rgba(255, 200, 97, 0.98)", false);
       }
-      this.hands.forEach((hand) => this.drawHand(hand));
       if (this.selection.active) {
         this.drawSelection(
           normalizeSelectionRect(this.selection.tipA, this.selection.tipB),
@@ -1844,13 +1874,15 @@
       }
       this.stream = null;
       this.hands = [];
+      if (this.inferenceCanvas) { this.inferenceCanvas.width = this.inferenceCanvas.height = 1; this.inferenceCanvas = null; }
       this.motionHistories.clear();
       this.postureFilters.clear();
       if (this.resizeHandler) {
         global.removeEventListener?.("resize", this.resizeHandler);
       }
+      this.resizeObserver?.disconnect();
       if (this.handsModel?.close) {
-        try { this.handsModel.close(); } catch (error) {}
+        try { Promise.resolve(this.handsModel.close()).catch(() => {}); } catch (error) {}
       }
       if (this.ctx) {
         const rect = this.canvas.getBoundingClientRect();

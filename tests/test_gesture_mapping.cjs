@@ -20,11 +20,13 @@ function fixture(options = {}) {
     getBoundingClientRect: () => videoBounds };
   const canvas = { tagName: 'CANVAS', width: 400, height: 300,
     getContext: () => ctx, getBoundingClientRect: () => bounds };
-  const events = { focus: [], selection: [], active: [], hover: [] };
+  const events = { focus: [], selection: [], active: [], hover: [], hands: [], errors: [] };
+  const frames = [];
   const sandbox = { console, Intl, Date, Math, performance: { now: () => 2000 },
-    requestAnimationFrame: () => 1, cancelAnimationFrame() {},
+    requestAnimationFrame: callback => { frames.push(callback); return frames.length; }, cancelAnimationFrame() {},
     setTimeout: () => 1, clearTimeout() {},
     addEventListener() {}, removeEventListener() {}, devicePixelRatio: 2 };
+  if (options.Hands) sandbox.Hands = options.Hands;
   sandbox.window = sandbox;
   vm.runInNewContext(source, sandbox, { filename: 'gesture-engine.js' });
   const engine = new sandbox.GestureEngine(video, {
@@ -35,15 +37,17 @@ function fixture(options = {}) {
     onSelection: event => events.selection.push(event),
     onActiveWord: word => events.active.push(word),
     onHoverWord: word => events.hover.push(word),
+    onHandUpdate: event => events.hands.push(event),
+    onError: error => events.errors.push(error),
     ...options.engineOptions
   });
-  engine.initialized = true;
-  engine.setTextMap({ rectified_size: [200, 300], lines: [
+  engine.initialized = options.initialized !== false;
+  if (options.withMap !== false) engine.setTextMap({ rectified_size: [200, 300], lines: [
     { id: 'line-1', text: '甲乙丙', reading_order: 1, bbox_rectified: [10, 20, 60, 20] },
     { id: 'line-2', text: '丁戊己', reading_order: 2, bbox_rectified: [10, 70, 60, 20] }
   ] });
   calls.length = 0;
-  return { engine, calls, events, canvas, video };
+  return { engine, calls, events, canvas, video, frames };
 }
 
 function project(matrix, x, y) {
@@ -152,7 +156,7 @@ test('contain uses actual video bounds and letterboxing, with compatible cover d
   near(covered.left, -125); near(covered.top, 40); near(covered.width, 600); near(covered.height, 300);
 });
 
-test('invalid tracking clears stale focus and selection and prevents events and rendering', () => {
+test('invalid tracking clears stale focus and selection and prevents text events and overlays', () => {
   let valid = true;
   const { engine, events, calls } = fixture({ engineOptions: {
     coordinateMapper: homographyMapper([1, 0, 0, 0, 1, 0, 0, 0, 1], () => valid)
@@ -185,6 +189,91 @@ test('invalid tracking clears stale focus and selection and prevents events and 
   engine.drawSelection({ x: 0, y: 0, width: 100, height: 100 }, true);
   engine.renderOverlay(1700);
   assert.ok(calls.every(call => call[0] === 'clearRect'));
+});
+
+test('raw hand detection and skeletons remain visible without an OCR map or valid page tracking', () => {
+  const { engine, calls, events } = fixture({ withMap: false, engineOptions: {
+    coordinateMapper: homographyMapper([1, 0, 0, 0, 1, 0, 0, 0, 1], () => false)
+  } });
+  const landmarks = Array.from({ length: 21 }, (_, index) => ({
+    x: .2 + index * .01, y: .3 + index * .01, z: 0
+  }));
+  engine.handleHandResults({ multiHandLandmarks: [landmarks], multiHandedness: [{ label: 'Right', score: .9 }] });
+  assert.equal(events.hands.length, 1);
+  assert.equal(events.hands[0].count, 1);
+  assert.equal(engine.hands.length, 1);
+  calls.length = 0;
+  engine.renderOverlay(2000);
+  assert.ok(calls.some(call => call[0] === 'arc'), 'hand landmarks should be drawn before a page is ready');
+  assert.ok(calls.some(call => call[0] === 'lineTo'), 'hand bones should be drawn before a page is ready');
+  assert.ok(!calls.some(call => call[0] === 'strokeRect' || call[0] === 'fillRect'));
+  assert.equal(engine.updatePointerTrace(30, 30, 2000), null);
+  assert.equal(engine.finishSelection(), null);
+  assert.equal(events.focus.length, 0);
+  assert.equal(events.selection.length, 0);
+});
+
+test('losing tracking hides stale text overlays while retaining current camera hand skeletons', () => {
+  let valid = true;
+  const { engine, calls, events } = fixture({ engineOptions: {
+    coordinateMapper: homographyMapper([1, 0, 0, 0, 1, 0, 0, 0, 1], () => valid)
+  } });
+  engine.activeWord = engine.wordMap[0];
+  engine.hoverWord = engine.wordMap[0];
+  engine.selection.active = true;
+  engine.selection.tipA = { x: 100, y: 200 };
+  engine.selection.tipB = { x: 200, y: 300 };
+  engine.hands = [{ role: 'pointer', points: Array.from({ length: 21 }, () => ({ x: 160, y: 270 })) }];
+  valid = false;
+  calls.length = 0;
+  engine.renderOverlay(2000);
+  assert.ok(calls.some(call => call[0] === 'arc'));
+  assert.ok(!calls.some(call => call[0] === 'strokeRect' || call[0] === 'fillRect'));
+  assert.equal(engine.activeWord, null);
+  assert.equal(engine.hoverWord, null);
+  assert.equal(engine.selection.active, false);
+  assert.equal(events.focus.length, 0);
+  assert.equal(events.selection.length, 0);
+});
+
+test('initialization waits for the actual Hands model before enabling either animation loop', async () => {
+  let ready;
+  const pending = new Promise(resolve => { ready = resolve; });
+  let initializeCalls = 0;
+  class Hands {
+    setOptions() {}
+    onResults() {}
+    initialize() { initializeCalls += 1; return pending; }
+  }
+  const { engine, frames, events } = fixture({ Hands, initialized: false, withMap: false });
+  let resolved = false;
+  const initialization = engine.init().then(() => { resolved = true; });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(initializeCalls, 1);
+  assert.equal(resolved, false);
+  assert.equal(engine.initialized, false);
+  assert.equal(frames.length, 0);
+  ready();
+  await initialization;
+  assert.equal(resolved, true);
+  assert.equal(engine.initialized, true);
+  assert.equal(frames.length, 2);
+  assert.equal(events.errors.length, 0);
+});
+
+test('an asynchronous Hands initialization failure never starts detection or render loops', async () => {
+  const failure = new Error('model unavailable');
+  class Hands {
+    setOptions() {}
+    onResults() {}
+    initialize() { return Promise.reject(failure); }
+  }
+  const { engine, frames, events } = fixture({ Hands, initialized: false, withMap: false });
+  await assert.rejects(engine.init(), /model unavailable/);
+  assert.equal(engine.initialized, false);
+  assert.equal(frames.length, 0);
+  assert.deepEqual(events.errors, [failure]);
 });
 
 test('null projections are safe and clearing a map removes all interaction state', () => {

@@ -26,6 +26,7 @@ RUNTIME_ASSETS = (
     "page-output.js", "page-content.js", "stability.js", "live-bridge.js", "app.js",
     "reading_manager.js", "gesture-engine.js", "browser-ocr.js", "reader-controller.js",
     "e-app.js", "THIRD_PARTY.md", ".nojekyll",
+    "blind-book-ocr-json-test.html", "gesture-test.js",
 )
 REQUIRED_VENDOR_ASSETS = (
     "vendor/opencv/opencv.js",

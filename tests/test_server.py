@@ -168,6 +168,8 @@ class ServerTests(unittest.TestCase):
 
     def test_integration_assets_and_debug_page(self):
         for path, expected in (("/reader-controller.js", "FeelyReaderController"),
+                               ("/blind-book-ocr-json-test.html", "C 模块"),
+                               ("/gesture-test.js", "FeelyGestureWorkspace"),
                                ("/ocr-debug", "<html")):
             with self.subTest(path=path):
                 response = self.client.get(path)
