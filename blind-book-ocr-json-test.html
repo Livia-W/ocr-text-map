@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f3ed">
+  <title>C 模块 · 实时摄像头与手势测试</title>
+  <link rel="stylesheet" href="styles.css?v=20261122">
+  <style>
+    #c-main { max-width: 1100px; }
+    .c-columns { display: grid; grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); gap: 18px; }
+    .c-panel { padding: 18px; min-width: 0; }
+    .c-viewer { position: relative; isolation: isolate; width: 100%; min-width: 0; max-width: 100%; aspect-ratio: 16 / 10; min-height: 260px; overflow: hidden; border-radius: 12px; background: #17271f; }
+    #c-camera { position: absolute; inset: 0; width: 100%; height: 100%; max-height: none; object-fit: contain; }
+    #c-camera.mirrored { transform: scaleX(-1); }
+    #c-overlay, #c-map { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #c-overlay { pointer-events: none; z-index: 3; }
+    #c-map { z-index: 2; pointer-events: none; }
+    .c-line { position: absolute; display: block; min-height: 0; min-width: 0; padding: 0 2px; border: 1px solid #9cd1a7; border-radius: 2px; overflow: hidden; white-space: nowrap; line-height: 1; text-align: left; color: #132b1c; background: #f4fff2db; font-weight: 500; pointer-events: auto; }
+    .c-line:focus-visible { outline: 3px solid #ffc861; outline-offset: 1px; }
+    #c-placeholder { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; color: #e0eadc; text-align: center; pointer-events: none; }
+    #c-map:not(:empty) + #c-placeholder { display: none; }
+    .c-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+    .c-actions button { flex: 1 1 140px; min-height: 46px; font-size: 14px; padding: 10px; }
+    #c-file { display: block; max-width: 100%; margin: 10px 0 16px; }
+    #c-region { width: 100%; min-height: 42px; margin: 8px 0; }
+    #c-status { min-height: 1.6em; overflow-wrap: anywhere; }
+    #c-status.error { color: #a63628; }
+    #c-hand-status { font-weight: 650; }
+    #c-events { padding-left: 22px; max-height: 460px; overflow: auto; }
+    #c-events li { margin: 12px 0; line-height: 1.6; overflow-wrap: anywhere; }
+    #c-focus { white-space: pre-wrap; line-height: 1.7; overflow-wrap: anywhere; }
+    @media (max-width: 760px) { .c-columns { grid-template-columns: 1fr; } .c-viewer { min-height: 280px; } }
+  </style>
+  <script src="vendor/mediapipe/hands.js" defer></script>
+  <script src="gesture-engine.js?v=20261122" defer></script>
+  <script src="gesture-test.js?v=20261122" defer></script>
+</head>
+<body>
+  <main id="c-main">
+    <header><a class="brand" href="./">FEELYREADER</a><a href="./">返回整合阅读页</a></header>
+    <h1>C 模块 · 实时摄像头与手势测试</h1>
+    <p class="intro">可以直接开启摄像头查看手部骨架，无需先上传文字地图。导入 JSON 后可测试单指字词焦点与双指选区。</p>
+    <p class="hint">此页是固定版式手势测试：JSON 按显示区域对齐，不追踪纸页。纸书移动、翻页后的点读请使用整合阅读页。</p>
+    <div class="c-columns">
+      <section class="workspace c-panel" aria-label="实时手势画面">
+        <div id="c-viewer" class="c-viewer">
+          <video id="c-camera" autoplay muted playsinline aria-label="实时摄像头画面"></video>
+          <div id="c-map" aria-label="固定版式文字地图"></div>
+          <div id="c-placeholder">启动摄像头后显示实时画面与手部骨架</div>
+          <canvas id="c-overlay" aria-label="手部骨架与字词焦点"></canvas>
+        </div>
+        <div class="c-actions">
+          <button id="c-start" class="primary" type="button">启动摄像头与手势</button>
+          <button id="c-stop" class="secondary" type="button" disabled>停止摄像头</button>
+          <button id="c-demo" class="secondary" type="button">鼠标测试</button>
+        </div>
+        <p id="c-status" role="status" aria-live="polite">相机未启动。允许相机权限后即可查看实时手势。</p>
+        <p id="c-hand-status" role="status">手部检测未启动</p>
+        <p class="hint">单指沿显示的文字框停留或滑动；双指框选文字。鼠标测试用移动模拟食指。字词范围由行坐标估算。</p>
+      </section>
+      <section class="workspace c-panel" aria-label="文字地图与手势结果">
+        <h2>导入 B 模块文字地图</h2>
+        <label for="c-file">JSON 文件（最大 16 MiB）</label>
+        <input id="c-file" type="file" accept="application/json,.json">
+        <label for="c-region">当前页或栏</label>
+        <select id="c-region" disabled><option value="">尚未导入</option></select>
+        <p id="c-map-status" class="hint">使用 lines[].bbox_rectified 和对应页的 rectified_size。</p>
+        <h2>当前字词</h2>
+        <p id="c-focus" role="status" aria-live="polite">等待字词焦点</p>
+        <h2>手势事件</h2>
+        <ol id="c-events" aria-label="最近的手势事件"><li>尚无事件</li></ol>
+      </section>
+    </div>
+    <p class="hint">手机请通过 HTTPS 打开；iPhone 使用 Safari。进入后台会停止相机，返回后请重新开启。</p>
+  </main>
+</body>
+</html>

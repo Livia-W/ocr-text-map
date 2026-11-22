@@ -6,23 +6,23 @@
   <meta name="theme-color" content="#f4f3ed">
   <title>FeelyReader · 随手翻页，听见文字</title>
   <meta name="description" content="FeelyReader 将书页采集、中文识别、手势点读与朗读放在同一处。">
-  <link rel="stylesheet" href="styles.css?v=20261115">
+  <link rel="stylesheet" href="styles.css?v=20261122">
   <script src="camera.js" defer></script>
   <script src="opencv-loader.js?v=20261105.4" defer></script>
   <script src="page-detector.js?v=20261105.4" defer></script>
   <script src="page-output.js?v=20261105.4" defer></script>
   <script src="page-content.js?v=20261105.4" defer></script>
   <script src="stability.js?v=20261105.4" defer></script>
-  <script src="live-bridge.js?v=20261105.4" defer></script>
-  <script src="app.js?v=20261105.4" defer></script>
+  <script src="live-bridge.js?v=20261122" defer></script>
+  <script src="app.js?v=20261122" defer></script>
   <script>window.FEELYREADER_NO_AUTO_TTS = true;</script>
   <script src="reading_manager.js?v=20261115" defer></script>
   <script src="vendor/mediapipe/hands.js" defer></script>
-  <script src="gesture-engine.js?v=20261115" defer></script>
+  <script src="gesture-engine.js?v=20261122" defer></script>
   <script src="vendor/tesseract/tesseract.min.js" defer></script>
   <script src="browser-ocr.js?v=20261115" defer></script>
-  <script src="reader-controller.js?v=20261115" defer></script>
-  <script src="e-app.js?v=20261115" defer></script>
+  <script src="reader-controller.js?v=20261122" defer></script>
+  <script src="e-app.js?v=20261122" defer></script>
 </head>
 <body>
   <main>
@@ -31,7 +31,7 @@
     <h1>随手翻页，听见文字。</h1>
     <p class="intro">拍下书页，或选一张照片。识别中文与英文，逐行朗读，也可以用手指在纸面上点读。</p>
     <div class="app-layout">
-    <section class="workspace" aria-label="书页拍摄工作区">
+    <section id="capture-panel" class="workspace" aria-label="书页拍摄工作区">
       <div class="section-heading"><h2>采集书页</h2><span class="section-step">01 / CAPTURE</span></div>
       <div class="viewer">
         <video id="video" autoplay muted playsinline aria-label="实时摄像头画面" hidden></video>
@@ -48,6 +48,13 @@
         <button id="capture" class="primary" hidden disabled>拍摄书页</button>
         <button id="stop" class="secondary" hidden>停止相机</button>
         <button id="retake" class="secondary" hidden>重新拍摄</button>
+      </div>
+      <div class="gesture-controls" role="group" aria-label="实时手势识别">
+        <label class="auto-control"><input id="reader-gestures" type="checkbox" aria-describedby="reader-gesture-help reader-gesture-status"> 开启实时手势识别</label>
+        <p id="reader-gesture-help" class="hint">开启后使用上方实时相机画面；未识别书页时也显示手骨架，纸面点读需要参考页跟踪。</p>
+        <p id="reader-hand-status" class="gesture-telemetry">手势识别未开启</p>
+        <p id="reader-gesture-status" class="hint" role="status" aria-live="polite">勾选后开启相机与手势识别，将手放入画面即可查看手骨架。</p>
+        <a class="button secondary gesture-workspace-link" href="blind-book-ocr-json-test.html">打开 C 模块手势工作台</a>
       </div>
       <p class="hint">整页入镜、保持稳定。自动拍摄会识别新参考页；纸面点读需要开启相机并取得有效跟踪。</p>
       <p id="cv-status" role="status">OpenCV 尚未加载</p>
@@ -97,8 +104,6 @@
       </div>
       <div class="reading-options"><label>语速<select id="reader-speed"><option value="0.75">0.75 倍</option><option value="1" selected>1 倍</option><option value="1.25">1.25 倍</option><option value="1.5">1.5 倍</option><option value="2">2 倍</option></select></label><button id="reader-save" class="quiet" disabled>收藏当前行</button></div>
       <p id="reader-reading-status" class="hint">尚无可朗读文字</p>
-      <label class="auto-control"><input id="reader-gestures" type="checkbox"> 启用纸面手势点读</label>
-      <p id="reader-gesture-status" class="hint">照片与导入地图可点击朗读；纸面手势需要相机采集的参考页与有效跟踪。</p>
       <details class="map-details"><summary>查看照片与文字定位</summary><div class="reader-map-holder"><p id="reader-map-empty" class="hint">识别后显示文字定位；导入地图可仅显示文字框。</p><canvas id="reader-map" hidden aria-label="点击文字定位框朗读"></canvas></div></details>
       <div class="map-export"><button id="reader-export-json" class="quiet" disabled>导出当前文字地图</button><button id="reader-export-txt" class="quiet" disabled>导出当前文字 TXT</button></div>
       <ul id="reader-warnings" class="reader-warnings" aria-label="识别提示"></ul>

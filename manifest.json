@@ -13,8 +13,13 @@
     },
     {
       "path": "app.js",
-      "bytes": 15269,
-      "sha256": "734343fde0b9cc72a68ec743f14d020c99278013d034d9119a878e95c89b37aa"
+      "bytes": 15055,
+      "sha256": "cf81286cdf2f3588143c08a6b1c5ff06a33943bcdb86aba2d80794e91b0f4355"
+    },
+    {
+      "path": "blind-book-ocr-json-test.html",
+      "bytes": 5321,
+      "sha256": "646a1682b016d7277dc534a57bbbf0cb2f6f5dfa0f0a1886c899108bb13a763f"
     },
     {
       "path": "browser-ocr.js",
@@ -28,18 +33,23 @@
     },
     {
       "path": "e-app.js",
-      "bytes": 20433,
-      "sha256": "c272fb12cdce3d06ad6da7cedc6ed6b4cda51de08582b92a10887706c175fcdd"
+      "bytes": 21703,
+      "sha256": "b94d24ca42fd4afccbd8f1e53c0975ca105ad566d9056b58fb9039c0f4c45734"
     },
     {
       "path": "gesture-engine.js",
-      "bytes": 65283,
-      "sha256": "3855157c2f27c6bafcb64d5808e9488c6a02b0d852a6a12eed11aa76338a9bdb"
+      "bytes": 67306,
+      "sha256": "90e1f1cc7dca20cebf44784eaf4bb9fac972fd43efbe826f8685834dc2419b8b"
+    },
+    {
+      "path": "gesture-test.js",
+      "bytes": 11717,
+      "sha256": "65230d9be5bb82fa6b2abd04418bf19cefc536a8dbcc9ec2478ced3d287f5ab6"
     },
     {
       "path": "index.html",
-      "bytes": 10648,
-      "sha256": "ca8f111086041775604e6e3df354945b0902244fb2255e26b34d9760283536f8"
+      "bytes": 11227,
+      "sha256": "827fae0ae56c70f446b705468a4480d8c50fa311fa9709339e7925a5b74b9e47"
     },
     {
       "path": "live-bridge.js",
@@ -53,8 +63,8 @@
     },
     {
       "path": "page-content.js",
-      "bytes": 6160,
-      "sha256": "1f3491261bf4c4e6a9f525c29cf5239bb096a4d140e834a75f3419787cdde779"
+      "bytes": 6046,
+      "sha256": "58cfe5cd49bf1ac723acf1006ed8927772936cce74897e69a56329a3e7bec9de"
     },
     {
       "path": "page-detector.js",
@@ -68,8 +78,8 @@
     },
     {
       "path": "reader-controller.js",
-      "bytes": 26650,
-      "sha256": "2926120989b5d94e7a938f5518a21e19f89717abeedf0881e27d6b945dc4826b"
+      "bytes": 28383,
+      "sha256": "77b4edebbaca1d5b671e1735e328017762f71d9c8d662d1a09fe202819b9fd9c"
     },
     {
       "path": "reading_manager.js",
@@ -78,13 +88,13 @@
     },
     {
       "path": "stability.js",
-      "bytes": 5931,
-      "sha256": "6898e9e63586f922b676dd2e481f43bad014e11262aaf2806b0869dac3fc3668"
+      "bytes": 5845,
+      "sha256": "620ddc8984e247810bb096969ee43d412a7d1b96a042b8b2c5db7d0263a5c981"
     },
     {
       "path": "styles.css",
-      "bytes": 9679,
-      "sha256": "864515d0adbce65724622ae3bfedfb82b8ead585a1d5440f8e9d0d4980782d00"
+      "bytes": 10268,
+      "sha256": "94dabc694e68eda28ef227b1477b68f906e973358f351737a16c8404b000417c"
     },
     {
       "path": "vendor/mediapipe/LICENSE",
@@ -93,8 +103,8 @@
     },
     {
       "path": "vendor/mediapipe/PACKAGE-LICENSE.txt",
-      "bytes": 487,
-      "sha256": "b3ac2aaf6d4122b55550103fd5cb1cd42c7b306963f3e0117e908ff49f3b1448"
+      "bytes": 478,
+      "sha256": "724f5e34758f617a478e4c33b5a50bea3302daa559f356a9b0693ac1b3907a7f"
     },
     {
       "path": "vendor/mediapipe/hand_landmark_full.tflite",

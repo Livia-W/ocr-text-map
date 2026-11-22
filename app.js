@@ -41,6 +41,8 @@ function updateIdentity(status='等待书页') {
 }
 const liveBridge=new BookLiveBridge(camera,()=>detector.engine.cv);
 window.BookReader=Object.freeze({
+  startCamera:()=>start(),
+  stopCamera:()=>stop(),
   getVideoElement:()=>camera.video,
   getVideoInfo:()=>liveBridge.info(),
   subscribeVideoFrames:(callback)=>liveBridge.subscribe(callback),

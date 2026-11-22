@@ -8,7 +8,7 @@
     "reader-split-control", "reader-split-position", "reader-split-value", "reader-photo-preview",
     "reader-status", "reader-cancel", "reader-progress", "reader-page", "reader-play", "reader-prev",
     "reader-next", "reader-speed", "reader-save", "reader-reading-status", "reader-gestures",
-    "reader-gesture-status", "reader-map", "reader-map-empty", "reader-lines", "reader-warnings",
+    "reader-gesture-status", "reader-hand-status", "reader-map", "reader-map-empty", "reader-lines", "reader-warnings",
     "reader-highlight-count", "reader-history-count", "reader-highlights", "reader-history",
     "reader-export-json", "reader-export-txt"
   ];
@@ -23,6 +23,7 @@
   let importRevision = 0;
   let photoLoading = false;
   let gesturesPending = false;
+  let gestureRequested = false;
   let rotation = 0;
   let activeMap = null;
   let activeImageUrl = "";
@@ -287,10 +288,19 @@
       }
       node("speed").value = speed;
     }
-    node("gestures").checked = !!state.gesturesEnabled;
-    node("gesture-status").textContent = state.gestureStatus || (state.trackingReady
-      ? "参考页跟踪有效，可以启用纸面手势。"
-      : "照片与导入地图可点击朗读；纸面手势需要相机采集的参考页与有效跟踪。");
+    node("gestures").checked = gesturesPending ? gestureRequested : !!state.gesturesEnabled;
+    const gestureError = state.gestureError ? String(state.gestureError) : "";
+    node("gesture-status").textContent = state.gestureStatus || (gestureError
+      ? `手势识别未启动：${gestureError}`
+      : state.trackingReady ? "参考页跟踪有效，可以使用纸面点读。"
+        : "未识别书页时也可查看手骨架；纸面点读需要相机采集的参考页与有效跟踪。");
+    node("gesture-status").classList.toggle("error", !!gestureError);
+    node("gesture-status").setAttribute("role", gestureError ? "alert" : "status");
+    const hands = Number.isFinite(state.gestureHands) ? Math.max(0, Math.floor(state.gestureHands)) : 0;
+    const fps = Number.isFinite(state.gestureFPS) ? Math.max(0, state.gestureFPS) : 0;
+    node("hand-status").textContent = gestureError ? "手势识别暂不可用，请重试"
+      : state.gestureModelReady ? `检测到 ${hands} 只手 · ${fps > 0 ? `${fps.toFixed(1)} 帧/秒` : "等待实时画面"}`
+        : gesturesPending ? "正在开启相机与加载手势识别…" : "手势识别未开启";
     const mapChanged = (state.activeMap || null) !== activeMap;
     const imageChanged = (state.activeImageUrl || "") !== activeImageUrl;
     const nextLineId = reading.currentLine?.id ?? null;
@@ -390,9 +400,16 @@
   node("gestures").addEventListener("change", () => attempt(async () => {
     if (gesturesPending) return;
     const enabled = node("gestures").checked;
+    gestureRequested = enabled;
     gesturesPending = true;
     node("gestures").disabled = true;
     try { await controller.setGesturesEnabled(enabled); }
+    catch (error) {
+      node("gesture-status").textContent = error.message || "手势识别启动失败，请重试。";
+      node("gesture-status").classList.toggle("error", true);
+      node("gesture-status").setAttribute("role", "alert");
+      node("hand-status").textContent = "手势识别暂不可用，请重试";
+    }
     finally {
       gesturesPending = false;
       node("gestures").disabled = false;
